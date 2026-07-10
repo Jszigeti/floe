@@ -37,11 +37,6 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	d.Client.Unlock(ctx) // removes stale locks only; failure is non-fatal
-	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
-	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes); err != nil {
-		d.Notify("floe backup failed", err.Error())
-		return err
-	}
 
 	skipPrune := false
 	if onICloud {
@@ -52,10 +47,16 @@ func Run(ctx context.Context, d Deps) error {
 		}
 	}
 	if !skipPrune {
+		// A failed prune must never cost the daily snapshot — warn and continue.
 		if err := d.Client.Forget(ctx, d.Cfg.Retention); err != nil {
 			d.Notify("floe retention failed", err.Error())
-			return err
 		}
+	}
+
+	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
+	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes); err != nil {
+		d.Notify("floe backup failed", err.Error())
+		return err
 	}
 
 	if err := runHooks(ctx, d, d.Cfg.Hooks.Post, "post-hook"); err != nil {

@@ -36,7 +36,7 @@ floe restore latest
 
 ## How it works
 
-Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>` — never shared between machines, since iCloud sync corrupts restic's repository locks if two Macs touch the same repo. A LaunchAgent runs `floe backup` daily (13:00 by default), which applies your hooks, snapshots, and prunes old snapshots under retention 7 daily / 4 weekly / 6 monthly. The passphrase lives in the macOS Keychain (service `floe`, account `restic`) — `floe passphrase` prints it for your password manager. A weekly digest notification summarizes backup health.
+Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>` — never shared between machines, since iCloud sync corrupts restic's repository locks if two Macs touch the same repo. A LaunchAgent runs `floe backup` daily (13:00 by default), which applies your hooks, prunes old snapshots under retention 7 daily / 4 weekly / 6 monthly, and then takes a new snapshot. The passphrase lives in the macOS Keychain (service `floe`, account `restic`) — `floe passphrase` prints it for your password manager. A weekly digest notification summarizes backup health.
 
 ## The iCloud problem
 

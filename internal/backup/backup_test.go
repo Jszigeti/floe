@@ -31,7 +31,7 @@ func deps(t *testing.T, f *run.Fake) (Deps, *notified) {
 	}, n
 }
 
-func TestHappyPathRunsBackupThenForget(t *testing.T) {
+func TestHappyPathRunsForgetThenBackup(t *testing.T) {
 	f := &run.Fake{}
 	d, n := deps(t, f)
 	if err := Run(context.Background(), d); err != nil {
@@ -40,8 +40,45 @@ func TestHappyPathRunsBackupThenForget(t *testing.T) {
 	if !f.CalledWith("restic", "backup") || !f.CalledWith("restic", "forget", "--prune") {
 		t.Fatalf("calls = %+v", f.Calls)
 	}
+	forgetIdx, backupIdx := -1, -1
+	for i, c := range f.Calls {
+		if len(c.Args) > 0 && c.Args[0] == "forget" && forgetIdx == -1 {
+			forgetIdx = i
+		}
+		if len(c.Args) > 0 && c.Args[0] == "backup" && backupIdx == -1 {
+			backupIdx = i
+		}
+	}
+	if forgetIdx == -1 || backupIdx == -1 || forgetIdx >= backupIdx {
+		t.Fatalf("want forget before backup, calls = %+v", f.Calls)
+	}
 	if len(n.titles) != 1 || !strings.Contains(n.titles[0], "healthy") {
 		t.Fatalf("want only first-run digest, got %v", n.titles)
+	}
+}
+
+func TestForgetFailureStillRunsBackup(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "forget" {
+			return "", errors.New("prune boom")
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if !f.CalledWith("restic", "backup") {
+		t.Fatal("backup must still run after a forget failure")
+	}
+	found := false
+	for _, m := range n.titles {
+		if strings.Contains(m, "retention") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a retention failure notification, got %v", n.titles)
 	}
 }
 
