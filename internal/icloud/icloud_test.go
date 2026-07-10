@@ -2,6 +2,7 @@ package icloud
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/run"
@@ -23,6 +24,24 @@ func TestQuotaRemainingParsesBrctl(t *testing.T) {
 	n, err := QuotaRemaining(context.Background(), f)
 	if err != nil || n != 54022418096 {
 		t.Fatalf("n = %d, err = %v", n, err)
+	}
+}
+
+func TestQuotaRemainingUnexpectedOutput(t *testing.T) {
+	empty := &run.Fake{Responses: map[string]run.Response{
+		"brctl quota": {Out: ""},
+	}}
+	_, err := QuotaRemaining(context.Background(), empty)
+	if err == nil || !strings.Contains(err.Error(), "unexpected brctl quota output") {
+		t.Fatalf("want error containing 'unexpected brctl quota output', got %v", err)
+	}
+
+	nonNumeric := &run.Fake{Responses: map[string]run.Response{
+		"brctl quota": {Out: "unavailable right now\n"},
+	}}
+	_, err = QuotaRemaining(context.Background(), nonNumeric)
+	if err == nil || !strings.Contains(err.Error(), "unexpected brctl quota output") {
+		t.Fatalf("want error containing 'unexpected brctl quota output', got %v", err)
 	}
 }
 
