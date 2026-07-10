@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,39 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "password manager") {
 		t.Fatal("passphrase warning not shown")
+	}
+}
+
+func TestInitAbortsOnAmbiguousKeychainError(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	home := os.Getenv("HOME")
+	bin, _ := restic.BinPath()
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	os.WriteFile(bin, []byte("fake"), 0o755)
+	// keychain lookup fails ambiguously (e.g. locked keychain) → wizard must abort, not overwrite
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "security" && c.Args[0] == "find-generic-password" {
+			return "", errors.New("keychain locked")
+		}
+		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
+			return "", os.ErrNotExist
+		}
+		return "", nil
+	}
+	dest := filepath.Join(home, "dest")
+	os.MkdirAll(dest, 0o755)
+
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
+	cmd.SetArgs([]string{"init"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want error, got nil")
+	}
+	if f.CalledWith("security", "add-generic-password") {
+		t.Fatal("must not overwrite keychain entry on ambiguous read")
 	}
 }
 

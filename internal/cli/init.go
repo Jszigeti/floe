@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -68,6 +69,10 @@ func newInitCmd(d Deps) *cobra.Command {
 			}
 
 			pass, err := keychain.Get(ctx, d.Runner)
+			// Only regenerate on a confirmed missing entry — overwriting on a flaky read would orphan an existing repo.
+			if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+				return err
+			}
 			if err != nil {
 				pass, err = keychain.Generate()
 				if err != nil {
