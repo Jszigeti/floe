@@ -30,6 +30,9 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Mobile Documents")) {
 		t.Fatal("want iCloud Drive excluded from sources")
 	}
+	if !slices.Contains(c.Scope.Exclude, "floe-restore-*") {
+		t.Fatal("want floe-restore dirs excluded by default")
+	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {

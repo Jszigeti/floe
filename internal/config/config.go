@@ -53,6 +53,7 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, ".rustup"),
 		filepath.Join(home, ".gradle"),
 		"node_modules",
+		"floe-restore-*",
 		".venv",
 		"venv",
 		"__pycache__",
