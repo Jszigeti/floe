@@ -27,7 +27,7 @@ func newStatusCmd(d Deps) *cobra.Command {
 			cmd.Printf("Snapshots:   %d snapshot%s", len(snaps), plural)
 			if len(snaps) > 0 {
 				last := snaps[len(snaps)-1]
-				cmd.Printf(" — latest %s (%s)", last.ShortID, last.Time.Format("2006-01-02 15:04"))
+				cmd.Printf(" — latest %s (%s)", last.ShortID, last.Time.Format("2006-01-02 3:04 PM"))
 			}
 			cmd.Println()
 			if size, err := client.RepoSize(ctx); err == nil {

@@ -32,7 +32,7 @@ func TestSnapshotsListsHistory(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "abc123") || !strings.Contains(out.String(), "2026-07-10") {
+	if !strings.Contains(out.String(), "abc123") || !strings.Contains(out.String(), "2026-07-10 1:00 PM") {
 		t.Fatalf("out = %q", out.String())
 	}
 }

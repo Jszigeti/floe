@@ -23,9 +23,9 @@ func newSnapshotsCmd(d Deps) *cobra.Command {
 				cmd.Println("No snapshots yet — run `floe backup`.")
 				return nil
 			}
-			cmd.Printf("%-10s %-17s %s\n", "ID", "DATE", "PATHS")
+			cmd.Printf("%-10s %-19s %s\n", "ID", "DATE", "PATHS")
 			for _, s := range snaps {
-				cmd.Printf("%-10s %-17s %s\n", s.ShortID, s.Time.Format("2006-01-02 15:04"), strings.Join(s.Paths, ", "))
+				cmd.Printf("%-10s %-19s %s\n", s.ShortID, s.Time.Format("2006-01-02 3:04 PM"), strings.Join(s.Paths, ", "))
 			}
 			return nil
 		},
