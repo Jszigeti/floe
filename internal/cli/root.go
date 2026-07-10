@@ -21,5 +21,7 @@ func Root(d Deps) *cobra.Command {
 	cmd.AddCommand(newBackupCmd(d))
 	cmd.AddCommand(newInitCmd(d))
 	cmd.AddCommand(newStatusCmd(d))
+	cmd.AddCommand(newSnapshotsCmd(d))
+	cmd.AddCommand(newRestoreCmd(d))
 	return cmd
 }
