@@ -45,8 +45,11 @@ func newStatusCmd(d Deps) *cobra.Command {
 					cmd.Printf("iCloud:      %.1f GB quota remaining", float64(rem)/1e9)
 					if pending, err := icloud.SyncPending(ctx, d.Runner); err == nil && pending {
 						cmd.Print(" — sync in progress")
+						cmd.Println()
+						cmd.Println("Retention:   deferred — prune is skipped until iCloud finishes syncing")
+					} else {
+						cmd.Println()
 					}
-					cmd.Println()
 				}
 			}
 			return nil
