@@ -101,6 +101,26 @@ func TestSkipsForgetWhenICloudSyncPending(t *testing.T) {
 	}
 }
 
+func TestSkipsForgetWhenSyncStateUnknown(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "brctl" && c.Args[0] == "status" {
+			return "", errors.New("brctl unavailable")
+		}
+		if c.Name == "brctl" && c.Args[0] == "quota" {
+			return "999999999999 bytes of quota remaining", nil
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	d.Cfg.Destination = "/Users/x/Library/Mobile Documents/com~apple~CloudDocs"
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if f.CalledWith("restic", "forget") {
+		t.Fatal("must not prune when sync state is unknown")
+	}
+}
+
 func TestQuotaLowNotifies(t *testing.T) {
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		if c.Name == "brctl" && c.Args[0] == "quota" {

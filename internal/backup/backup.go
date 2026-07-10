@@ -45,9 +45,10 @@ func Run(ctx context.Context, d Deps) error {
 
 	skipPrune := false
 	if onICloud {
-		if pending, err := icloud.SyncPending(ctx, d.Runner); err == nil && pending {
+		// Fail closed: unknown sync state must never allow pruning an un-synced repo.
+		if pending, err := icloud.SyncPending(ctx, d.Runner); err != nil || pending {
 			skipPrune = true
-			d.Log("repo sync pending, skipping prune this run")
+			d.Log("repo sync pending or unknown, skipping prune this run")
 		}
 	}
 	if !skipPrune {
