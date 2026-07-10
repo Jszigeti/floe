@@ -29,3 +29,11 @@ func TestSendEscapesQuotes(t *testing.T) {
 		t.Fatalf("script = %q", f.Calls[0].Args[1])
 	}
 }
+
+func TestSendEscapesBackslashes(t *testing.T) {
+	f := &run.Fake{}
+	Send(context.Background(), f, "floe", `path: C:\path`)
+	if !strings.Contains(f.Calls[0].Args[1], `C:\\path`) {
+		t.Fatalf("script = %q", f.Calls[0].Args[1])
+	}
+}
