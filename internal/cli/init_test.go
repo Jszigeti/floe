@@ -64,8 +64,8 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	if !strings.Contains(out.String(), "password manager") {
 		t.Fatal("passphrase warning not shown")
 	}
-	if !strings.Contains(out.String(), "13:00") {
-		t.Fatalf("hour not formatted as HH:00 in output:\n%s", out.String())
+	if !strings.Contains(out.String(), "1:00 PM") {
+		t.Fatalf("hour not formatted as 12-hour in output:\n%s", out.String())
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/keychain"
@@ -32,4 +33,8 @@ func buildClient(ctx context.Context, r run.Runner) (*restic.Client, config.Conf
 		return nil, config.Config{}, err
 	}
 	return &restic.Client{Bin: bin, Repo: repo, Pass: pass, R: r}, cfg, nil
+}
+
+func formatHour(hour int) string {
+	return time.Date(0, 1, 1, hour, 0, 0, 0, time.UTC).Format("3:04 PM")
 }

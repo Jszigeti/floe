@@ -53,7 +53,7 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					if !launchd.IsLoaded(ctx, d.Runner) {
 						return false, false, "launchagent not loaded — run `floe init`"
 					}
-					return true, false, fmt.Sprintf("daily at %02d:00", cfg.Hour)
+					return true, false, "daily at " + formatHour(cfg.Hour)
 				}},
 				{"repository", func(ctx context.Context) (bool, bool, string) {
 					client, _, err := buildClient(ctx, d.Runner)

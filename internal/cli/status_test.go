@@ -34,7 +34,7 @@ func TestStatusShowsSnapshotsAndSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := out.String()
-	for _, want := range []string{"1 snapshot", "abc123", "8.2 GB", "13:00"} {
+	for _, want := range []string{"1 snapshot", "abc123", "8.2 GB", "daily at 1:00 PM"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("status output missing %q:\n%s", want, s)
 		}

@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/Jszigeti/floe/internal/icloud"
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/spf13/cobra"
@@ -37,7 +35,7 @@ func newStatusCmd(d Deps) *cobra.Command {
 			}
 			schedule := "NOT SCHEDULED — run `floe init`"
 			if launchd.IsLoaded(ctx, d.Runner) {
-				schedule = fmt.Sprintf("daily at %02d:00", cfg.Hour)
+				schedule = "daily at " + formatHour(cfg.Hour)
 			}
 			cmd.Printf("Schedule:    %s\n", schedule)
 			if icloud.IsICloudPath(cfg.Destination) {
