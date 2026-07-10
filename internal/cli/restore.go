@@ -19,16 +19,17 @@ func newRestoreCmd(d Deps) *cobra.Command {
 			if len(args) == 2 {
 				include = args[1]
 			}
-			if target == "" {
-				target = "floe-restore-" + args[0]
+			dest := target
+			if dest == "" {
+				dest = "floe-restore-" + args[0]
 			}
-			if err := client.Restore(cmd.Context(), args[0], target, include); err != nil {
+			if err := client.Restore(cmd.Context(), args[0], dest, include); err != nil {
 				return err
 			}
-			cmd.Println("Restored to", target)
+			cmd.Println("Restored to", dest)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&target, "target", "", "destination directory (default ./floe-restore-<id>)")
+	cmd.Flags().StringVar(&target, "target", "", "destination directory (default floe-restore-<id>)")
 	return cmd
 }
