@@ -8,6 +8,7 @@ import (
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/digest"
 	"github.com/Jszigeti/floe/internal/icloud"
+	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -26,6 +27,12 @@ type Deps struct {
 func Run(ctx context.Context, d Deps) error {
 	if err := runHooks(ctx, d, d.Cfg.Hooks.Pre, "pre-hook"); err != nil {
 		return err
+	}
+
+	if dir, err := manifest.Dir(); err == nil {
+		if err := manifest.Dump(ctx, d.Runner, dir, "/Applications"); err != nil {
+			d.Log("manifest dump skipped: %v", err)
+		}
 	}
 
 	onICloud := icloud.IsICloudPath(d.Cfg.Destination)

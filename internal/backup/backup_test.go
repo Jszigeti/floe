@@ -118,6 +118,34 @@ func TestBackupFailureNotifies(t *testing.T) {
 	}
 }
 
+func TestRunDumpsManifest(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if !f.CalledWith("brew", "bundle", "dump") {
+		t.Fatal("want manifest dump to run brew bundle dump")
+	}
+}
+
+func TestRunSucceedsWhenManifestToolsFail(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		switch c.Name {
+		case "brew", "mas", "code", "crontab":
+			return "", errors.New("no such tool")
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if !f.CalledWith("restic", "backup") {
+		t.Fatal("backup must still run when manifest tools are all missing")
+	}
+}
+
 func TestSkipsForgetWhenICloudSyncPending(t *testing.T) {
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		if c.Name == "brctl" && c.Args[0] == "status" {
