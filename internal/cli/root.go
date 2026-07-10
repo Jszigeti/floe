@@ -1,9 +1,13 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/Jszigeti/floe/internal/run"
+	"github.com/spf13/cobra"
+)
 
 type Deps struct {
 	Version string
+	Runner  run.Runner
 }
 
 func Root(d Deps) *cobra.Command {
@@ -13,5 +17,6 @@ func Root(d Deps) *cobra.Command {
 		Version:      d.Version,
 		SilenceUsage: true,
 	}
+	cmd.AddCommand(newPassphraseCmd(d))
 	return cmd
 }
