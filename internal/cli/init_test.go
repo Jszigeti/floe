@@ -58,8 +58,11 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	if pp, _ := launchd.PlistPath(); !fileExists(pp) {
 		t.Fatal("launchagent not installed")
 	}
-	if !f.CalledWith("backup", "--quiet") {
+	if !f.CalledWith("backup") {
 		t.Fatal("first backup not run")
+	}
+	if f.CalledWith("backup", "--quiet") {
+		t.Fatal("wizard's first backup should stream progress, not run --quiet")
 	}
 	if !strings.Contains(out.String(), "password manager") {
 		t.Fatal("passphrase warning not shown")

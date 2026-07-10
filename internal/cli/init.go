@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -99,7 +100,7 @@ func newInitCmd(d Deps) *cobra.Command {
 				cfg.Hour = h
 			}
 
-			client, cfgSaved, err := initRepoAndConfig(ctx, d, cfg, bin, pass)
+			client, cfgSaved, err := initRepoAndConfig(ctx, d, cfg, bin, pass, cmd.OutOrStdout())
 			if err != nil {
 				return err
 			}
@@ -150,7 +151,7 @@ func normalizeDestination(input string) (string, error) {
 	return input, nil
 }
 
-func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass string) (*restic.Client, config.Config, error) {
+func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass string, progress io.Writer) (*restic.Client, config.Config, error) {
 	repo, err := cfg.RepoPath()
 	if err != nil {
 		return nil, cfg, err
@@ -158,7 +159,7 @@ func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		return nil, cfg, err
 	}
-	client := &restic.Client{Bin: bin, Repo: repo, Pass: pass, R: d.Runner}
+	client := &restic.Client{Bin: bin, Repo: repo, Pass: pass, R: d.Runner, Progress: progress}
 	if !client.IsInitialized(ctx) {
 		if err := client.Init(ctx); err != nil {
 			return nil, cfg, fmt.Errorf("initializing repository: %w", err)
