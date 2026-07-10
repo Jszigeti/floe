@@ -25,5 +25,6 @@ func Root(d Deps) *cobra.Command {
 	cmd.AddCommand(newSnapshotsCmd(d))
 	cmd.AddCommand(newRestoreCmd(d))
 	cmd.AddCommand(newDoctorCmd(d))
+	cmd.AddCommand(newUninstallCmd(d))
 	return cmd
 }
