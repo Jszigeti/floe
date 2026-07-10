@@ -14,7 +14,10 @@ import (
 
 type notified struct{ titles, msgs []string }
 
-func (n *notified) fn(title, msg string) { n.titles = append(n.titles, title); n.msgs = append(n.msgs, msg) }
+func (n *notified) fn(title, msg string) {
+	n.titles = append(n.titles, title)
+	n.msgs = append(n.msgs, msg)
+}
 
 func deps(t *testing.T, f *run.Fake) (Deps, *notified) {
 	t.Setenv("HOME", t.TempDir())

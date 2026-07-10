@@ -17,11 +17,11 @@ func writeFile(t *testing.T, path string, size int) {
 func TestExcluded(t *testing.T) {
 	excludes := []string{"/home/x/.Trash", "node_modules"}
 	cases := map[string]bool{
-		"/home/x/.Trash":               true,
-		"/home/x/.Trash/f":             true,
-		"/home/x/proj/node_modules":    true,
-		"/home/x/proj/src/main.go":     false,
-		"/home/x/.Trashcan":            false,
+		"/home/x/.Trash":            true,
+		"/home/x/.Trash/f":          true,
+		"/home/x/proj/node_modules": true,
+		"/home/x/proj/src/main.go":  false,
+		"/home/x/.Trashcan":         false,
 	}
 	for p, want := range cases {
 		if got := Excluded(p, excludes); got != want {
