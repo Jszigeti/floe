@@ -45,6 +45,7 @@ func (c *Client) Restore(ctx context.Context, id, target, include string) error 
 	return err
 }
 
+// Unlock removes stale locks only — safe to run before every backup.
 func (c *Client) Unlock(ctx context.Context) error {
 	_, err := c.run(ctx, "unlock")
 	return err

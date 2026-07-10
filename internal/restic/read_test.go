@@ -2,6 +2,7 @@ package restic
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/config"
@@ -54,5 +55,25 @@ func TestRepoSizeParsesStats(t *testing.T) {
 	n, err := newTestClient(f).RepoSize(context.Background())
 	if err != nil || n != 123456789 {
 		t.Fatalf("n = %d, err = %v", n, err)
+	}
+}
+
+func TestUnlockRunsUnlock(t *testing.T) {
+	// Test that Unlock calls restic with exactly "unlock" arg
+	f := &run.Fake{}
+	err := newTestClient(f).Unlock(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(f.Calls) != 1 || len(f.Calls[0].Args) != 1 || f.Calls[0].Args[0] != "unlock" {
+		t.Fatalf("expected single 'unlock' arg, got %v", f.Calls[0].Args)
+	}
+
+	// Test that Unlock propagates runner error
+	errTest := errors.New("lock failure")
+	f2 := &run.Fake{Default: run.Response{Err: errTest}}
+	err2 := newTestClient(f2).Unlock(context.Background())
+	if err2 != errTest {
+		t.Fatalf("expected error %v, got %v", errTest, err2)
 	}
 }
