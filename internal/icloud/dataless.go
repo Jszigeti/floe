@@ -43,6 +43,7 @@ func Materialize(ctx context.Context, r run.Runner, fn FlagsFn, paths []string) 
 			return err
 		}
 	}
+	// Known ceiling: stat errors count as "not dataless", so a failed poll can report success early — restic surfaces the real failure on next read.
 	for {
 		remaining := 0
 		for _, p := range paths {
