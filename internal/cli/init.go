@@ -164,7 +164,7 @@ func normalizeDestination(input string) (string, error) {
 		return "", fmt.Errorf("destination %s must be an absolute path", input)
 	}
 	if info, err := os.Stat(input); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("destination %s does not exist — pick an existing synced folder", input)
+		return "", fmt.Errorf("destination %s is not an existing directory — pick an existing synced folder", input)
 	}
 	return input, nil
 }
