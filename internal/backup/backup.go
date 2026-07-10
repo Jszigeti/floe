@@ -68,7 +68,9 @@ func Run(ctx context.Context, d Deps) error {
 			msg = fmt.Sprintf("Backups healthy — repo %.1f GB", float64(size)/1e9)
 		}
 		d.Notify("floe: backups healthy", msg)
-		digest.MarkSent(d.Now())
+		if err := digest.MarkSent(d.Now()); err != nil {
+			d.Log("digest stamp write failed: %v", err)
+		}
 	}
 	return nil
 }
