@@ -33,6 +33,15 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, "floe-restore-*") {
 		t.Fatal("want floe-restore dirs excluded by default")
 	}
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Biome")) {
+		t.Fatal("want Library/Biome excluded by default")
+	}
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, ".vscode/extensions")) {
+		t.Fatal("want .vscode/extensions excluded by default")
+	}
+	if !slices.Contains(c.Scope.Exclude, ".pytest_cache") {
+		t.Fatal("want .pytest_cache excluded by default")
+	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {

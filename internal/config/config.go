@@ -37,6 +37,7 @@ func ICloudDrivePath(home string) string {
 	return filepath.Join(home, "Library/Mobile Documents/com~apple~CloudDocs")
 }
 
+// Excludes only cover regenerable content — app data (Containers, browser profiles, VMs) stays in.
 func DefaultExcludes(home string) []string {
 	return []string{
 		filepath.Join(home, "Library/Mobile Documents"),
@@ -45,6 +46,11 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, "Library/Containers/com.docker.docker"),
 		filepath.Join(home, "Library/Developer"),
 		filepath.Join(home, "Library/Application Support/MobileSync"),
+		filepath.Join(home, "Library/Logs"),
+		filepath.Join(home, "Library/Biome"),
+		filepath.Join(home, "Library/Saved Application State"),
+		filepath.Join(home, "Library/HTTPStorages"),
+		filepath.Join(home, "Library/Android"),
 		filepath.Join(home, ".Trash"),
 		filepath.Join(home, ".cache"),
 		filepath.Join(home, ".npm"),
@@ -52,6 +58,12 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, ".cargo"),
 		filepath.Join(home, ".rustup"),
 		filepath.Join(home, ".gradle"),
+		filepath.Join(home, "go/pkg"),
+		filepath.Join(home, ".ollama/models"),
+		filepath.Join(home, ".m2/repository"),
+		filepath.Join(home, ".vscode/extensions"),
+		filepath.Join(home, "miniconda3"),
+		filepath.Join(home, "anaconda3"),
 		"node_modules",
 		"floe-restore-*",
 		".venv",
@@ -60,6 +72,12 @@ func DefaultExcludes(home string) []string {
 		".next",
 		"dist",
 		"target",
+		".pytest_cache",
+		".mypy_cache",
+		".turbo",
+		".pnpm-store",
+		".tox",
+		".terraform",
 	}
 }
 
