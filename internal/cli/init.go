@@ -121,7 +121,7 @@ func newInitCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Println("✓ floe is set up. Daily backups at", cfgSaved.Hour, "h — check anytime with `floe status`.")
+			cmd.Printf("✓ floe is set up. Daily backups at %02d:00 — check anytime with `floe status`.\n", cfgSaved.Hour)
 			return nil
 		},
 	}
