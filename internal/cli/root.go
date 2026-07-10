@@ -20,5 +20,6 @@ func Root(d Deps) *cobra.Command {
 	cmd.AddCommand(newPassphraseCmd(d))
 	cmd.AddCommand(newBackupCmd(d))
 	cmd.AddCommand(newInitCmd(d))
+	cmd.AddCommand(newStatusCmd(d))
 	return cmd
 }
