@@ -129,8 +129,12 @@ func TestInitRejectsMissingDestination(t *testing.T) {
 	cmd.SetOut(out)
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
 	cmd.SetArgs([]string{"init"})
-	if err := cmd.Execute(); err == nil {
+	err := cmd.Execute()
+	if err == nil {
 		t.Fatal("want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "existing directory") {
+		t.Fatalf("error must mention 'existing directory': %v", err)
 	}
 	if _, err := config.Load(); err == nil {
 		t.Fatal("config must not be saved on rejected destination")

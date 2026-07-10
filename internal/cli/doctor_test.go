@@ -95,7 +95,7 @@ func TestDoctorICloudChecksHealthy(t *testing.T) {
 		t.Fatalf("healthy doctor must exit 0: %v\n%s", err, out.String())
 	}
 	s := out.String()
-	for _, want := range []string{"optimize mac storage", "all local", "quota"} {
+	for _, want := range []string{"optimize mac storage", "all local", "quota", "GiB"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, s)
 		}

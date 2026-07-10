@@ -106,7 +106,7 @@ func TestStatusShowsICloudQuotaAndSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := out.String()
-	for _, want := range []string{"54.0 GB quota remaining", "sync in progress", "deferred"} {
+	for _, want := range []string{"50.3 GiB quota remaining", "sync in progress", "deferred"} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("status output missing %q:\n%s", want, s)
 		}
