@@ -2,7 +2,9 @@ package launchd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -79,7 +81,11 @@ func Uninstall(ctx context.Context, r run.Runner) error {
 		return err
 	}
 	r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootout", guiDomain(), pp}})
-	return os.Remove(pp)
+	err = os.Remove(pp)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func IsLoaded(ctx context.Context, r run.Runner) bool {

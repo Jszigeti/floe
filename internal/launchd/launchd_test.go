@@ -50,8 +50,38 @@ func TestIsLoaded(t *testing.T) {
 	if !IsLoaded(context.Background(), loaded) {
 		t.Fatal("want loaded when print succeeds")
 	}
+	uid := fmt.Sprintf("gui/%d", os.Getuid())
+	if !loaded.CalledWith("launchctl", "print", uid+"/"+Label) {
+		t.Fatalf("want launchctl print call with %q, got %+v", uid+"/"+Label, loaded.Calls)
+	}
 	notLoaded := &run.Fake{Default: run.Response{Err: fmt.Errorf("could not find service")}}
 	if IsLoaded(context.Background(), notLoaded) {
 		t.Fatal("want not loaded on error")
+	}
+}
+
+func TestUninstallRemovesPlistAndBootsOut(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	boot := &run.Fake{}
+	if err := Install(context.Background(), boot, "/bin/floe", 13); err != nil {
+		t.Fatal(err)
+	}
+	pp, _ := PlistPath()
+	if _, err := os.Stat(pp); err != nil {
+		t.Fatal("plist not written after install")
+	}
+	uid := fmt.Sprintf("gui/%d", os.Getuid())
+	unboot := &run.Fake{}
+	if err := Uninstall(context.Background(), unboot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(pp); err == nil {
+		t.Fatal("plist still exists after uninstall")
+	}
+	if !unboot.CalledWith("launchctl", "bootout", uid) {
+		t.Fatalf("want launchctl bootout, got %+v", unboot.Calls)
+	}
+	if err := Uninstall(context.Background(), unboot); err != nil {
+		t.Fatalf("uninstall must be idempotent, got error: %v", err)
 	}
 }
