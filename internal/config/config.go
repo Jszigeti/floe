@@ -96,7 +96,32 @@ func Load() (Config, error) {
 		}
 		return Config{}, fmt.Errorf("reading %s: %w", p, err)
 	}
+	dest, err := NormalizeDestination(c.Destination)
+	if err != nil {
+		return Config{}, err
+	}
+	c.Destination = dest
 	return c, nil
+}
+
+// NormalizeDestination expands a leading ~ or $HOME and requires an absolute path.
+// It does not require the path to exist — that check is the wizard's job only,
+// since a config loaded outside `floe init` (e.g. hand-edited) must still resolve.
+func NormalizeDestination(input string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case input == "~" || strings.HasPrefix(input, "~/"):
+		input = filepath.Join(home, strings.TrimPrefix(input, "~"))
+	case input == "$HOME" || strings.HasPrefix(input, "$HOME/"):
+		input = filepath.Join(home, strings.TrimPrefix(input, "$HOME"))
+	}
+	if !filepath.IsAbs(input) {
+		return "", fmt.Errorf("destination %s must be an absolute path", input)
+	}
+	return input, nil
 }
 
 func (c Config) Save() error {

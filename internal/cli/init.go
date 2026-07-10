@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -150,18 +149,9 @@ func ensurePassphrase(ctx context.Context, cmd *cobra.Command, d Deps) (string, 
 // path, and requires the directory to already exist — the destination is an
 // already-synced folder, so creating it would never be correct.
 func normalizeDestination(input string) (string, error) {
-	home, err := os.UserHomeDir()
+	input, err := config.NormalizeDestination(input)
 	if err != nil {
 		return "", err
-	}
-	switch {
-	case input == "~" || strings.HasPrefix(input, "~/"):
-		input = filepath.Join(home, strings.TrimPrefix(input, "~"))
-	case input == "$HOME" || strings.HasPrefix(input, "$HOME/"):
-		input = filepath.Join(home, strings.TrimPrefix(input, "$HOME"))
-	}
-	if !filepath.IsAbs(input) {
-		return "", fmt.Errorf("destination %s must be an absolute path", input)
 	}
 	if info, err := os.Stat(input); err != nil || !info.IsDir() {
 		return "", fmt.Errorf("destination %s is not an existing directory — pick an existing synced folder", input)

@@ -52,6 +52,46 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadNormalizesTildeDestination(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	home, _ := os.UserHomeDir()
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`destination = "~/dest"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, "dest")
+	if c.Destination != want {
+		t.Fatalf("destination = %q, want %q", c.Destination, want)
+	}
+}
+
+func TestLoadRejectsRelativeDestination(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`destination = "relative/dest"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(); err == nil {
+		t.Fatal("want error for relative destination")
+	}
+}
+
 func TestLoadMissingFileIsActionable(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	_, err := Load()
