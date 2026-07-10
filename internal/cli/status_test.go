@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,40 @@ func TestStatusShowsSnapshotsAndSchedule(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("status output missing %q:\n%s", want, s)
 		}
+	}
+}
+
+func TestStatusShowsDeferredRetentionWhenQuotaFails(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	cfg, _ := config.Load()
+	cfg.Destination = filepath.Join(os.Getenv("HOME"), "Library/Mobile Documents/com~apple~CloudDocs")
+	cfg.Save()
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case strings.Contains(joined, "snapshots --json"):
+			return `[{"time":"2026-07-10T13:00:00Z","short_id":"abc123","paths":["/Users/x"]}]`, nil
+		case strings.Contains(joined, "stats"):
+			return `{"total_size":8200000000}`, nil
+		case c.Name == "security":
+			return "pw\n", nil
+		case c.Name == "brctl" && c.Args[0] == "quota":
+			return "", errors.New("brctl unavailable")
+		case c.Name == "brctl" && c.Args[0] == "status":
+			return "r:8386 ld{synced-all} up:needs-upload uv:1", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "deferred") {
+		t.Fatalf("status output missing 'deferred':\n%s", out.String())
 	}
 }
 
