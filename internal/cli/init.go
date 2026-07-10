@@ -55,45 +55,13 @@ func newInitCmd(d Deps) *cobra.Command {
 			}
 			cfg.Destination = dest
 
-			cmd.Println("→ Estimating backup size (this can take a minute)…")
-			home, _ := os.UserHomeDir()
-			total, top, err := scan.Estimate(home, cfg.Scope.Exclude)
-			if err != nil {
+			if err := promptScope(cmd, ask, &cfg); err != nil {
 				return err
-			}
-			cmd.Printf("Estimated backup size: %.1f GB\nLargest directories:\n", float64(total)/1e9)
-			n := min(10, len(top))
-			for i := 0; i < n; i++ {
-				cmd.Printf("  %2d. %6.1f GB  %s\n", i+1, float64(top[i].Bytes)/1e9, top[i].Path)
-			}
-			if picks := ask("Exclude numbers (comma-separated)", ""); picks != "" {
-				for _, s := range strings.Split(picks, ",") {
-					if i, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && i >= 1 && i <= n {
-						cfg.Scope.Exclude = append(cfg.Scope.Exclude, top[i-1].Path)
-					}
-				}
 			}
 
-			pass, err := keychain.Get(ctx, d.Runner)
-			// Only regenerate on a confirmed missing entry — overwriting on a flaky read would orphan an existing repo.
-			if err != nil && !errors.Is(err, keychain.ErrNotFound) {
-				return err
-			}
+			pass, err := ensurePassphrase(ctx, cmd, d)
 			if err != nil {
-				pass, err = keychain.Generate()
-				if err != nil {
-					return err
-				}
-				if err := keychain.Set(ctx, d.Runner, pass); err != nil {
-					return err
-				}
-				cmd.Println("\n════════════════════════════════════════════════")
-				cmd.Printf("  Your backup passphrase: %s\n", pass)
-				cmd.Println("  Save it in your password manager NOW.")
-				cmd.Println("  Without it your backup is unreadable.")
-				cmd.Println("════════════════════════════════════════════════")
-			} else {
-				cmd.Println("→ Reusing existing passphrase from Keychain")
+				return err
 			}
 
 			if h, err := strconv.Atoi(ask("Daily backup hour (0-23)", strconv.Itoa(cfg.Hour))); err == nil && h >= 0 && h <= 23 {
@@ -126,6 +94,56 @@ func newInitCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// promptScope estimates the backup size and lets the user exclude directories from it.
+func promptScope(cmd *cobra.Command, ask func(prompt, def string) string, cfg *config.Config) error {
+	cmd.Println("→ Estimating backup size (this can take a minute)…")
+	home, _ := os.UserHomeDir()
+	total, top, err := scan.Estimate(home, cfg.Scope.Exclude)
+	if err != nil {
+		return err
+	}
+	cmd.Printf("Estimated backup size: %.1f GB\nLargest directories:\n", float64(total)/1e9)
+	n := min(10, len(top))
+	for i := 0; i < n; i++ {
+		cmd.Printf("  %2d. %6.1f GB  %s\n", i+1, float64(top[i].Bytes)/1e9, top[i].Path)
+	}
+	if picks := ask("Exclude numbers (comma-separated)", ""); picks != "" {
+		for _, s := range strings.Split(picks, ",") {
+			if i, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && i >= 1 && i <= n {
+				cfg.Scope.Exclude = append(cfg.Scope.Exclude, top[i-1].Path)
+			}
+		}
+	}
+	return nil
+}
+
+// ensurePassphrase reuses an existing Keychain passphrase, or generates and stores a new
+// one — shown once since it is never displayed again after this run.
+func ensurePassphrase(ctx context.Context, cmd *cobra.Command, d Deps) (string, error) {
+	pass, err := keychain.Get(ctx, d.Runner)
+	// Only regenerate on a confirmed missing entry — overwriting on a flaky read would orphan an existing repo.
+	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+		return "", err
+	}
+	if err != nil {
+		pass, err = keychain.Generate()
+		if err != nil {
+			return "", err
+		}
+		if err := keychain.Set(ctx, d.Runner, pass); err != nil {
+			return "", err
+		}
+		cmd.Println("\n════════════════════════════════════════════════")
+		cmd.Printf("  Your backup passphrase: %s\n", pass)
+		cmd.Println("  Save it in your password manager NOW.")
+		cmd.Println("  Without it your backup is unreadable.")
+		cmd.Println("════════════════════════════════════════════════")
+	} else {
+		cmd.Println("→ Reusing existing passphrase from Keychain")
+	}
+	return pass, nil
 }
 
 // normalizeDestination expands a leading ~ or $HOME, requires an absolute
