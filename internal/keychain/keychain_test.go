@@ -3,6 +3,7 @@ package keychain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -28,6 +29,20 @@ func TestSetCallsSecurity(t *testing.T) {
 	}
 	if !f.CalledWith("security", "add-generic-password", "-s", "floe", "s3cret") {
 		t.Fatalf("calls = %+v", f.Calls)
+	}
+}
+
+func TestSetScrubsPassphraseFromErrors(t *testing.T) {
+	pass := "s3cret-passphrase"
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		return "", fmt.Errorf("exit status 1: security add-generic-password -U -s floe -a restic -w %s", pass)
+	}}
+	err := Set(context.Background(), f, pass)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if strings.Contains(err.Error(), pass) {
+		t.Fatalf("err leaks passphrase: %v", err)
 	}
 }
 
