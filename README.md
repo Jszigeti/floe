@@ -3,10 +3,26 @@
 **Turn the iCloud storage you already pay for into a real versioned backup.**
 
 [![ci](https://github.com/Jszigeti/floe/actions/workflows/ci.yml/badge.svg)](https://github.com/Jszigeti/floe/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/Jszigeti/floe)](https://github.com/Jszigeti/floe/releases)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+
+<img src="docs/demo.svg" alt="floe status and floe doctor output" width="760">
 
 ## Why
 
-Time Machine needs a disk you actually plug in. iCloud Drive syncs your files everywhere, but it keeps no history — overwrite a file or delete it, and it's gone on every device. floe closes that gap: daily encrypted, deduplicated, versioned snapshots, written into the iCloud (or Dropbox, Google Drive, external disk — any synced folder) storage you're already paying for.
+iCloud Drive is sync, not backup. Overwrite a file and the mistake propagates to every device in seconds. Delete one and it is gone everywhere. Time Machine solves this, but only if you remember to plug in a disk.
+
+floe closes the gap: a daily snapshot of your Mac, encrypted, deduplicated and compressed, written into the iCloud storage you already pay for. Full history, one command to restore any version. Any synced folder works (Dropbox, Google Drive, an external disk). iCloud Drive is just the default.
+
+| Alternative | The catch |
+|---|---|
+| iCloud Drive alone | syncs your files but keeps no history |
+| Time Machine | needs a disk you actually plug in |
+| Arq | does this well, for $50 |
+| restic by hand | a great engine, but you own the config, the scheduling and the iCloud quirks |
+
+floe is restic under the hood, with the macOS and iCloud parts handled for you.
 
 ## Install
 
@@ -14,11 +30,13 @@ Time Machine needs a disk you actually plug in. iCloud Drive syncs your files ev
 curl -fsSL https://raw.githubusercontent.com/Jszigeti/floe/main/install.sh | sh
 ```
 
-Or grab a binary from [GitHub Releases](https://github.com/Jszigeti/floe/releases), or build from source:
+Piping curl into sh deserves a look first: [install.sh](install.sh) is 34 lines. You can also grab a binary from [GitHub Releases](https://github.com/Jszigeti/floe/releases) or build from source:
 
 ```bash
 go install github.com/Jszigeti/floe/cmd/floe@latest
 ```
+
+Works on Apple Silicon and Intel Macs. floe downloads its own restic binary (pinned version, sha256 verified), so there is nothing else to install.
 
 ## Quickstart
 
@@ -26,28 +44,43 @@ go install github.com/Jszigeti/floe/cmd/floe@latest
 floe init
 ```
 
-The wizard downloads and verifies the pinned restic binary, asks for your backup destination (defaults to iCloud Drive), estimates the backup size and lets you exclude the largest directories, generates a passphrase and stores it in the macOS Keychain — shown once, save it now — asks for a daily backup hour, installs the LaunchAgent, and runs the first backup.
+The wizard walks you through setup in about a minute: pick a destination (defaults to iCloud Drive), see a size estimate with your largest directories and exclude what you don't need, get a generated passphrase stored in the macOS Keychain (shown once, save it in your password manager), pick a backup hour. It then schedules the daily run and takes the first backup with live progress.
 
-```bash
-floe status    # snapshot count, repo size, schedule, iCloud quota
-floe snapshots # full backup history
-floe restore latest
-```
+| Command | What it does |
+|---|---|
+| `floe init` | guided setup, then the first backup |
+| `floe backup` | run a backup now |
+| `floe status` | last snapshot, repo size, schedule, iCloud quota and sync state |
+| `floe snapshots` | full backup history |
+| `floe restore <id or latest> [path]` | restore a snapshot, or a single file from it |
+| `floe doctor` | diagnose the iCloud pitfalls (see below) |
+| `floe passphrase` | print the passphrase stored in the Keychain |
+| `floe uninstall` | remove the daily schedule, keep all your data |
 
 ## How it works
 
-Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>` — never shared between machines, since iCloud sync corrupts restic's repository locks if two Macs touch the same repo. A LaunchAgent runs `floe backup` daily (13:00 by default), which applies your hooks, prunes old snapshots under retention 7 daily / 4 weekly / 6 monthly, and then takes a new snapshot. The passphrase lives in the macOS Keychain (service `floe`, account `restic`) — `floe passphrase` prints it for your password manager. A weekly digest notification summarizes backup health.
+- Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>`. Repositories are never shared between machines because iCloud sync corrupts restic's locks when two Macs write to the same repo.
+- A LaunchAgent runs the backup daily (1:00 PM by default). Each run applies retention first (keep 7 daily, 4 weekly, 6 monthly snapshots), then takes the new snapshot.
+- The passphrase is generated at setup and lives in the macOS Keychain (service `floe`, account `restic`).
+- Failures and low quota notify you immediately. Success is a weekly digest, never a daily ping.
+- The engine is [restic](https://github.com/restic/restic): AES-256 encryption, content-defined deduplication and zstd compression. Unchanged files are never uploaded twice, and identical data across days is stored once.
 
 ## The iCloud problem
 
-macOS can evict local file contents once they're synced to iCloud, replacing them with a "dataless" placeholder to save disk space. If that happens to files inside the restic repo, restic can fail reading them. `floe doctor` checks for evicted repo files and re-materializes them on demand, checks whether "Optimize Mac Storage" is enabled, checks remaining iCloud quota, and refuses to prune while an iCloud sync is still pending — pruning during a partial sync can corrupt the repo.
+macOS "Optimize Mac Storage" can evict local file contents once they are synced, leaving dataless placeholders behind. If that happens inside the restic repository, backups and restores start failing in confusing ways. Quota runs out silently. Pruning during a half-finished sync can corrupt the repo.
+
+This is floe's home turf:
+
+- `floe doctor` detects evicted repo files and re-downloads them, warns when Optimize Mac Storage is on, and checks quota headroom.
+- floe never prunes while an iCloud sync is pending. `floe status` shows `Retention: deferred` while that protection is active, and the prune runs at the start of the next backup instead.
+- Quota is checked before every backup. If you are close to the limit you get a notification with options, and floe never deletes history to make room.
 
 ## Configuration
 
-`~/.config/floe/config.toml`:
+Everything lives in `~/.config/floe/config.toml`, written by the wizard and editable by hand:
 
 ```toml
-destination = "/Users/jonas/Library/Mobile Documents/com~apple~CloudDocs"
+destination = "/Users/you/Library/Mobile Documents/com~apple~CloudDocs"
 hour = 13
 
 [retention]
@@ -56,15 +89,17 @@ weekly = 4
 monthly = 6
 
 [scope]
-paths = ["/Users/jonas"]
+paths = ["/Users/you"]
 exclude = [
-  "/Users/jonas/Library/Caches",
-  "/Users/jonas/.cache",
+  "/Users/you/Library/Caches",
   "node_modules",
+  "floe-restore-*",
 ]
 
 [hooks]
-# Runs before each backup — see docs/examples/export-docker-volumes.sh
+# Shell commands that run before/after each backup.
+# Example: export Docker volumes so they land in the snapshot.
+# See docs/examples/export-docker-volumes.sh
 pre = ["~/.config/floe/hooks/export-docker-volumes.sh"]
 post = []
 ```
@@ -72,16 +107,16 @@ post = []
 ## FAQ
 
 **Is my data encrypted?**
-Yes — restic encrypts everything client-side with AES-256 before it ever touches disk. Apple (or Dropbox, or Google) only ever sees ciphertext.
+Yes. restic encrypts everything client-side with AES-256 before it touches the destination. Apple, Dropbox or Google only ever store ciphertext.
 
 **What if I lose the passphrase?**
-Your backup is unrecoverable. There is no reset. Save it in a password manager the moment `floe init` shows it to you — `floe passphrase` can print it again as long as it's still in your Keychain.
+The backup is unrecoverable. There is no reset. Save it in a password manager the moment `floe init` shows it. `floe passphrase` prints it again as long as it is in your Keychain.
 
 **Can I back up multiple Macs to the same iCloud account?**
 Yes. Each Mac gets its own repository under `Floe.backup/<hostname>`, so they never collide.
 
 **How do I restore on a new Mac?**
-`floe init` sets up a fresh repository named after the new machine's hostname, so it won't see the old Mac's history by itself. To pull files from the old machine's backup: install floe (so the pinned restic binary is available at `~/.local/share/floe/bin/restic`), make sure the destination folder (e.g. iCloud Drive) is synced locally, then run restic directly against the old repository:
+`floe init` on the new machine creates a fresh repository named after its hostname, so it won't see the old Mac's history by itself. To pull files from the old machine's backup: install floe, make sure the destination folder is synced locally, then run restic directly against the old repository:
 
 ```bash
 RESTIC_REPOSITORY="<destination>/Floe.backup/<old-hostname>" \
@@ -89,6 +124,14 @@ RESTIC_PASSWORD="<saved passphrase>" \
 ~/.local/share/floe/bin/restic restore latest --target ./restored
 ```
 
+## Uninstall
+
+```bash
+floe uninstall
+```
+
+This removes the daily schedule and nothing else: your snapshots, config and passphrase stay untouched. For a full removal, delete `~/.config/floe`, `~/.local/share/floe`, the `Floe.backup` folder in your destination, and the Keychain entry (`security delete-generic-password -s floe -a restic`). Your snapshots remain readable with plain restic and your passphrase.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

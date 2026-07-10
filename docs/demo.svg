@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470" font-family="'SF Mono', Menlo, Consolas, monospace" font-size="13">
+  <rect width="760" height="470" rx="10" fill="#161b22"/>
+  <rect width="760" height="34" rx="10" fill="#21262d"/>
+  <rect y="24" width="760" height="10" fill="#21262d"/>
+  <circle cx="20" cy="17" r="6" fill="#ff5f57"/>
+  <circle cx="40" cy="17" r="6" fill="#febc2e"/>
+  <circle cx="60" cy="17" r="6" fill="#28c840"/>
+  <text x="380" y="21" text-anchor="middle" fill="#8b949e" font-size="12">floe</text>
+
+  <g fill="#c9d1d9">
+    <text x="24" y="66"><tspan fill="#7ee787">$</tspan> floe status</text>
+    <text x="24" y="90">Snapshots:   34 snapshots — latest 8c21f0d2 (2026-07-11 1:00 PM)</text>
+    <text x="24" y="112">Repo size:   42.7 GB</text>
+    <text x="24" y="134">Schedule:    daily at 1:00 PM</text>
+    <text x="24" y="156">iCloud:      118.3 GiB quota remaining</text>
+
+    <text x="24" y="200"><tspan fill="#7ee787">$</tspan> floe doctor</text>
+    <text x="24" y="224"><tspan fill="#3fb950">✓</tspan> restic binary              ~/.local/share/floe/bin/restic</text>
+    <text x="24" y="246"><tspan fill="#3fb950">✓</tspan> keychain passphrase        present</text>
+    <text x="24" y="268"><tspan fill="#3fb950">✓</tspan> schedule                   daily at 1:00 PM</text>
+    <text x="24" y="290"><tspan fill="#3fb950">✓</tspan> repository                 …/com~apple~CloudDocs/Floe.backup/MacBook-Pro</text>
+    <text x="24" y="312"><tspan fill="#3fb950">✓</tspan> optimize mac storage       off</text>
+    <text x="24" y="334"><tspan fill="#3fb950">✓</tspan> repo files materialized    all local</text>
+    <text x="24" y="356"><tspan fill="#3fb950">✓</tspan> icloud quota               118.3 GiB remaining</text>
+
+    <text x="24" y="400"><tspan fill="#7ee787">$</tspan> floe restore latest</text>
+    <text x="24" y="424">Restored to floe-restore-latest</text>
+  </g>
+</svg>
