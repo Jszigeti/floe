@@ -23,5 +23,6 @@ func Root(d Deps) *cobra.Command {
 	cmd.AddCommand(newStatusCmd(d))
 	cmd.AddCommand(newSnapshotsCmd(d))
 	cmd.AddCommand(newRestoreCmd(d))
+	cmd.AddCommand(newDoctorCmd(d))
 	return cmd
 }
