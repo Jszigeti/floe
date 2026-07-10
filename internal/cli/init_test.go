@@ -66,6 +66,71 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	}
 }
 
+func TestInitExpandsTildeDestination(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	home := os.Getenv("HOME")
+	bin, _ := restic.BinPath()
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	os.WriteFile(bin, []byte("fake"), 0o755)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "security" && c.Args[0] == "find-generic-password" {
+			return "", os.ErrNotExist
+		}
+		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
+			return "", os.ErrNotExist
+		}
+		return "", nil
+	}
+	os.MkdirAll(filepath.Join(home, "dest"), 0o755)
+
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetIn(strings.NewReader("~/dest\n\n\n"))
+	cmd.SetArgs([]string{"init"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init failed: %v\noutput:\n%s", err, out.String())
+	}
+
+	cfg, err := config.Load()
+	want := filepath.Join(home, "dest")
+	if err != nil || cfg.Destination != want {
+		t.Fatalf("cfg.Destination = %q, want %q, err = %v", cfg.Destination, want, err)
+	}
+}
+
+func TestInitRejectsMissingDestination(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	home := os.Getenv("HOME")
+	bin, _ := restic.BinPath()
+	os.MkdirAll(filepath.Dir(bin), 0o755)
+	os.WriteFile(bin, []byte("fake"), 0o755)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "security" && c.Args[0] == "find-generic-password" {
+			return "", os.ErrNotExist
+		}
+		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
+			return "", os.ErrNotExist
+		}
+		return "", nil
+	}
+	dest := filepath.Join(home, "does-not-exist")
+
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
+	cmd.SetArgs([]string{"init"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want error, got nil")
+	}
+	if _, err := config.Load(); err == nil {
+		t.Fatal("config must not be saved on rejected destination")
+	}
+}
+
 func TestInitAbortsOnAmbiguousKeychainError(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +48,11 @@ func newInitCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cfg.Destination = ask("Backup destination", cfg.Destination)
+			dest, err := normalizeDestination(ask("Backup destination", cfg.Destination))
+			if err != nil {
+				return err
+			}
+			cfg.Destination = dest
 
 			cmd.Println("→ Estimating backup size (this can take a minute)…")
 			home, _ := os.UserHomeDir()
@@ -120,6 +125,29 @@ func newInitCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// normalizeDestination expands a leading ~ or $HOME, requires an absolute
+// path, and requires the directory to already exist — the destination is an
+// already-synced folder, so creating it would never be correct.
+func normalizeDestination(input string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case input == "~" || strings.HasPrefix(input, "~/"):
+		input = filepath.Join(home, strings.TrimPrefix(input, "~"))
+	case input == "$HOME" || strings.HasPrefix(input, "$HOME/"):
+		input = filepath.Join(home, strings.TrimPrefix(input, "$HOME"))
+	}
+	if !filepath.IsAbs(input) {
+		return "", fmt.Errorf("destination %s must be an absolute path", input)
+	}
+	if info, err := os.Stat(input); err != nil || !info.IsDir() {
+		return "", fmt.Errorf("destination %s does not exist — pick an existing synced folder", input)
+	}
+	return input, nil
 }
 
 func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass string) (*restic.Client, config.Config, error) {
