@@ -93,9 +93,9 @@ func newDoctorCmd(d Deps) *cobra.Command {
 							return true, true, "unknown"
 						}
 						if rem < 5<<30 {
-							return true, true, fmt.Sprintf("only %.1f GB remaining", float64(rem)/1e9)
+							return true, true, fmt.Sprintf("only %.1f GiB remaining", float64(rem)/float64(1<<30))
 						}
-						return true, false, fmt.Sprintf("%.1f GB remaining", float64(rem)/1e9)
+						return true, false, fmt.Sprintf("%.1f GiB remaining", float64(rem)/float64(1<<30))
 					}},
 				)
 			}

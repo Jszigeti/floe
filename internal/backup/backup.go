@@ -32,7 +32,7 @@ func Run(ctx context.Context, d Deps) error {
 	if onICloud {
 		if rem, err := icloud.QuotaRemaining(ctx, d.Runner); err == nil && rem < lowQuotaBytes {
 			d.Notify("floe: iCloud quota low",
-				fmt.Sprintf("%.1f GB remaining — reduce retention, add excludes, or upgrade iCloud+", float64(rem)/1e9))
+				fmt.Sprintf("%.1f GiB remaining — reduce retention, add excludes, or upgrade iCloud+", float64(rem)/float64(1<<30)))
 		}
 	}
 
