@@ -1,6 +1,7 @@
 package restic
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"slices"
@@ -44,5 +45,24 @@ func TestBackupBuildsArgs(t *testing.T) {
 		"--exclude", "node_modules", "--exclude", "/Users/x/.Trash"}
 	if !slices.Equal(f.Calls[0].Args, want) {
 		t.Fatalf("args = %v", f.Calls[0].Args)
+	}
+}
+
+func TestBackupStreamsProgressWhenSet(t *testing.T) {
+	f := &run.Fake{}
+	c := newTestClient(f)
+	var buf bytes.Buffer
+	c.Progress = &buf
+	if err := c.Backup(context.Background(), []string{"/Users/x"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(f.Calls[0].Args, "--quiet") {
+		t.Fatalf("args = %v, want no --quiet when streaming progress", f.Calls[0].Args)
+	}
+	if !slices.Contains(f.Calls[0].Env, "RESTIC_PROGRESS_FPS=1") {
+		t.Fatalf("env = %v, want RESTIC_PROGRESS_FPS=1", f.Calls[0].Env)
+	}
+	if f.Calls[0].Stdout != &buf {
+		t.Fatal("want Stdout wired to Progress writer")
 	}
 }

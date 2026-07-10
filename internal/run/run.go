@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 )
 
 type Cmd struct {
-	Name string
-	Args []string
-	Env  []string
+	Name   string
+	Args   []string
+	Env    []string
+	Stdout io.Writer // when set, output streams here as it's produced, in addition to being captured
 }
 
 type Runner interface {
@@ -24,7 +26,11 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
 	cmd.Env = append(os.Environ(), c.Env...)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdout = &stdout
+	if c.Stdout != nil {
+		cmd.Stdout = io.MultiWriter(&stdout, c.Stdout)
+	}
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), fmt.Errorf("%s %v: %w: %s", c.Name, c.Args, err, stderr.String())
 	}

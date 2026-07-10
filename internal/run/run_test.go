@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -24,6 +25,21 @@ func TestExecRunnerPassesEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(out) != "ok" {
+		t.Fatalf("out = %q", out)
+	}
+}
+
+func TestExecRunnerStreamsStdout(t *testing.T) {
+	var buf bytes.Buffer
+	out, err := ExecRunner{}.Run(context.Background(),
+		Cmd{Name: "echo", Args: []string{"hi"}, Stdout: &buf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(buf.String()) != "hi" {
+		t.Fatalf("buf = %q", buf.String())
+	}
+	if strings.TrimSpace(out) != "hi" {
 		t.Fatalf("out = %q", out)
 	}
 }
