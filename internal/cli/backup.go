@@ -2,12 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/backup"
-	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/notify"
 	"github.com/spf13/cobra"
 )
@@ -42,19 +39,10 @@ func newBackupCmd(d Deps) *cobra.Command {
 	}
 }
 
+// The LaunchAgent plist redirects stdout to floe.log — writing the file here would duplicate every line.
 func makeLogger(cmd *cobra.Command) func(string, ...any) {
-	logPath, err := launchd.LogPath()
-	var file *os.File
-	if err == nil {
-		os.MkdirAll(filepath.Dir(logPath), 0o755)
-		// Held open until process exit — fine for a one-shot CLI, revisit for a long-lived mode.
-		file, _ = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	}
 	return func(format string, a ...any) {
 		line := fmt.Sprintf("%s "+format, append([]any{time.Now().Format(time.RFC3339)}, a...)...)
 		cmd.Println(line)
-		if file != nil {
-			fmt.Fprintln(file, line)
-		}
 	}
 }

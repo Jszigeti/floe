@@ -1,13 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
-	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -53,27 +55,21 @@ func TestBackupWithoutInitFails(t *testing.T) {
 	}
 }
 
-func TestBackupLogsToFile(t *testing.T) {
+func TestBackupLogsTimestampedLines(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
 	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
 	cmd.SetArgs([]string{"backup"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	logPath, err := launchd.LogPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatalf("log file not created: %v", err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "backup started") {
-		t.Fatalf("log missing 'backup started'")
-	}
-	if !strings.Contains(content, "backup finished") {
-		t.Fatalf("log missing 'backup finished'")
+	content := out.String()
+	year := strconv.Itoa(time.Now().Year())
+	for _, want := range []string{"backup started", "backup finished", year, "T"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("output missing %q:\n%s", want, content)
+		}
 	}
 }
