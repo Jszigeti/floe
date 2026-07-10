@@ -76,7 +76,10 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					}},
 					check{"repo files materialized", func(ctx context.Context) (bool, bool, string) {
 						dataless, err := icloud.DatalessFiles(repo, icloud.StatFlags)
-						if err != nil || len(dataless) == 0 {
+						if err != nil {
+							return true, true, fmt.Sprintf("could not scan for evicted files: %v", err)
+						}
+						if len(dataless) == 0 {
 							return true, false, "all local"
 						}
 						if err := icloud.Materialize(ctx, d.Runner, icloud.StatFlags, dataless); err != nil {
