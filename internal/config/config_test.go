@@ -116,3 +116,24 @@ func TestRepoPathSanitizesHostname(t *testing.T) {
 		t.Fatalf("hostname not sanitized: %q", base)
 	}
 }
+
+func TestLoadRejectsEmptyDestination(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`destination = ""`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load()
+	if err == nil {
+		t.Fatal("want error for empty destination")
+	}
+	if !strings.Contains(err.Error(), "floe init") {
+		t.Fatalf("err = %v, want mention of floe init", err)
+	}
+}

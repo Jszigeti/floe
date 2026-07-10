@@ -108,6 +108,9 @@ func Load() (Config, error) {
 // It does not require the path to exist — that check is the wizard's job only,
 // since a config loaded outside `floe init` (e.g. hand-edited) must still resolve.
 func NormalizeDestination(input string) (string, error) {
+	if input == "" {
+		return "", fmt.Errorf("config has no destination — run `floe init`")
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err

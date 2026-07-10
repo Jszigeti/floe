@@ -39,7 +39,7 @@ func newBackupCmd(d Deps) *cobra.Command {
 	}
 }
 
-// The LaunchAgent plist redirects stdout to floe.log — writing the file here would duplicate every line.
+// The LaunchAgent plist redirects stdout and stderr to floe.log — writing the file here would duplicate every line.
 func makeLogger(cmd *cobra.Command) func(string, ...any) {
 	return func(format string, a ...any) {
 		line := fmt.Sprintf("%s "+format, append([]any{time.Now().Format(time.RFC3339)}, a...)...)
