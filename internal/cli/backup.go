@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/backup"
@@ -45,6 +46,8 @@ func makeLogger(cmd *cobra.Command) func(string, ...any) {
 	logPath, err := launchd.LogPath()
 	var file *os.File
 	if err == nil {
+		os.MkdirAll(filepath.Dir(logPath), 0o755)
+		// Held open until process exit — fine for a one-shot CLI, revisit for a long-lived mode.
 		file, _ = os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	}
 	return func(format string, a ...any) {

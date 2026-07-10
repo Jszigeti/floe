@@ -3,9 +3,11 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/config"
+	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -48,5 +50,30 @@ func TestBackupWithoutInitFails(t *testing.T) {
 	cmd.SetArgs([]string{"backup"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("want actionable error without config")
+	}
+}
+
+func TestBackupLogsToFile(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	cmd := Root(Deps{Version: "t", Runner: f})
+	cmd.SetArgs([]string{"backup"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	logPath, err := launchd.LogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log file not created: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "backup started") {
+		t.Fatalf("log missing 'backup started'")
+	}
+	if !strings.Contains(content, "backup finished") {
+		t.Fatalf("log missing 'backup finished'")
 	}
 }
