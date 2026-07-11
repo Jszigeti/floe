@@ -31,8 +31,12 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	if dir, err := manifest.Dir(); err == nil {
-		if err := manifest.Dump(ctx, d.Runner, dir, "/Applications"); err != nil {
+		warnings, err := manifest.Dump(ctx, d.Runner, dir, "/Applications")
+		if err != nil {
 			d.Log("manifest dump skipped: %v", err)
+		}
+		for _, w := range warnings {
+			d.Log("manifest: %s", w)
 		}
 	}
 

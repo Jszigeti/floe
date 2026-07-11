@@ -25,7 +25,7 @@ func TestDumpWritesRecipeFiles(t *testing.T) {
 		"crontab -l": {Out: "@daily true\n"},
 	}}
 
-	if err := Dump(context.Background(), f, dir, appsRoot); err != nil {
+	if _, err := Dump(context.Background(), f, dir, appsRoot); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +66,8 @@ func TestDumpToleratesMissingTools(t *testing.T) {
 	appsRoot := t.TempDir()
 	f := &run.Fake{Default: run.Response{Err: errors.New("no such tool")}}
 
-	if err := Dump(context.Background(), f, dir, appsRoot); err != nil {
+	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,6 +78,35 @@ func TestDumpToleratesMissingTools(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "applications.txt")); err != nil {
 		t.Fatalf("applications.txt should exist even when empty: %v", err)
+	}
+	if len(warnings) == 0 {
+		t.Fatal("want warnings when every collector's tool fails")
+	}
+}
+
+func TestDumpRemovesStaleFileWhenToolFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	appsRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "crontab.txt"), []byte("@daily true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "crontab" {
+			return "", errors.New("crontab: no crontab for user")
+		}
+		return "", nil
+	}}
+
+	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "crontab.txt")); !os.IsNotExist(err) {
+		t.Fatalf("want stale crontab.txt removed after tool failure, err = %v", err)
+	}
+	if len(warnings) == 0 {
+		t.Fatal("want a warning for the failed crontab collector")
 	}
 }
 

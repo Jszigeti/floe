@@ -228,7 +228,7 @@ func TestRunDumpsManifest(t *testing.T) {
 func TestRunSucceedsWhenManifestToolsFail(t *testing.T) {
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		switch c.Name {
-		case "brew", "mas", "code", "crontab":
+		case "brew", "mas", "crontab":
 			return "", errors.New("no such tool")
 		}
 		return "", nil
