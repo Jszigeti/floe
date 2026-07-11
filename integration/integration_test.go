@@ -16,7 +16,9 @@ import (
 )
 
 func TestFullBackupRestoreCycle(t *testing.T) {
+	origBin := realResticBinPath()
 	t.Setenv("HOME", t.TempDir())
+	seedResticFromRealHome(t, origBin)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -24,6 +26,7 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	restoreResticToRealHome(t, origBin, bin)
 
 	home := os.Getenv("HOME")
 	src := filepath.Join(home, "data")
@@ -67,4 +70,63 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 	if err != nil || string(got) != "v1" {
 		t.Fatalf("restored content = %q, err = %v, want v1 from first snapshot", got, err)
 	}
+}
+
+// realResticBinPath captures the restic binary path under the runner's real
+// home, before HOME gets isolated to a temp dir for the test.
+func realResticBinPath() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".local/share/floe/bin/restic")
+}
+
+// seedResticFromRealHome copies a previously cached restic binary from the
+// runner's real home into the isolated HOME so EnsureBinary's exists-check
+// short-circuits the download.
+// Seed restic from the runner's real home so CI caching works despite HOME isolation.
+func seedResticFromRealHome(t *testing.T, origBin string) {
+	t.Helper()
+	if origBin == "" {
+		return
+	}
+	data, err := os.ReadFile(origBin)
+	if err != nil {
+		return
+	}
+	dst, err := restic.BinPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("seeded restic binary from runner's real home; download skipped")
+}
+
+// restoreResticToRealHome copies a freshly downloaded restic binary back to
+// the runner's real home so actions/cache can persist it for the next run.
+func restoreResticToRealHome(t *testing.T, origBin, downloadedBin string) {
+	t.Helper()
+	if origBin == "" {
+		return
+	}
+	if _, err := os.Stat(origBin); err == nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(origBin), 0o755); err != nil {
+		return
+	}
+	data, err := os.ReadFile(downloadedBin)
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(origBin, data, 0o755); err != nil {
+		return
+	}
+	t.Log("downloaded restic binary; copied back to runner's real home for caching")
 }

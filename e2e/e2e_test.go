@@ -129,10 +129,12 @@ func mustContain(t *testing.T, out, sub string) {
 // keychain, snapshots) the same way a real user's machine would accumulate
 // it across `floe init`, daily backups, and `floe doctor` runs.
 func TestE2E(t *testing.T) {
+	origBin := realResticBinPath()
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, "Library/Mobile Documents/com~apple~CloudDocs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	seedResticFromRealHome(t, origBin, home)
 	shimDir := t.TempDir()
 	workDir := t.TempDir()
 	dataDir := t.TempDir() // outside HOME so it's never picked up by the backup itself
@@ -221,6 +223,8 @@ func TestE2E(t *testing.T) {
 		if _, err := os.Stat(manifestPath); err != nil {
 			t.Fatalf("manifest not written: %v", err)
 		}
+
+		restoreResticToRealHome(t, origBin, home)
 	})
 
 	t.Run("second_backup_and_history", func(t *testing.T) {
@@ -368,4 +372,64 @@ func TestE2E(t *testing.T) {
 			t.Fatalf("second uninstall should still exit 0, got %d:\n%s", code, out)
 		}
 	})
+}
+
+// resticRelPath is internal/restic.BinPath's path relative to $HOME; kept as
+// a local constant since e2e never imports internal packages.
+const resticRelPath = ".local/share/floe/bin/restic"
+
+// realResticBinPath captures the restic binary path under the runner's real
+// home, before floe's subprocesses run against an isolated HOME.
+func realResticBinPath() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, resticRelPath)
+}
+
+// seedResticFromRealHome copies a previously cached restic binary from the
+// runner's real home into the isolated HOME so EnsureBinary's exists-check
+// short-circuits the download.
+// Seed restic from the runner's real home so CI caching works despite HOME isolation.
+func seedResticFromRealHome(t *testing.T, origBin, isolatedHome string) {
+	t.Helper()
+	if origBin == "" {
+		return
+	}
+	data, err := os.ReadFile(origBin)
+	if err != nil {
+		return
+	}
+	dst := filepath.Join(isolatedHome, resticRelPath)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("seeded restic binary from runner's real home; download skipped")
+}
+
+// restoreResticToRealHome copies a freshly downloaded restic binary back to
+// the runner's real home so actions/cache can persist it for the next run.
+func restoreResticToRealHome(t *testing.T, origBin, isolatedHome string) {
+	t.Helper()
+	if origBin == "" {
+		return
+	}
+	if _, err := os.Stat(origBin); err == nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(isolatedHome, resticRelPath))
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(origBin), 0o755); err != nil {
+		return
+	}
+	if err := os.WriteFile(origBin, data, 0o755); err != nil {
+		return
+	}
+	t.Log("downloaded restic binary; copied back to runner's real home for caching")
 }
