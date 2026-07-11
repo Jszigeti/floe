@@ -82,9 +82,13 @@ func newInitCmd(d Deps) *cobra.Command {
 			cmd.Println("→ Running first backup…")
 			err = backup.Run(ctx, backup.Deps{
 				Cfg: cfgSaved, Client: client, Runner: d.Runner,
-				Notify: func(title, msg string) { _ = notify.Send(ctx, d.Runner, title, msg) },
-				Now:    time.Now,
-				Log:    func(f string, a ...any) { cmd.Printf(f+"\n", a...) },
+				Notify: func(title, msg string) {
+					if err := notify.Send(ctx, d.Runner, title, msg); err != nil {
+						cmd.Printf("notification failed: %v\n", err)
+					}
+				},
+				Now: time.Now,
+				Log: func(f string, a ...any) { cmd.Printf(f+"\n", a...) },
 			})
 			if err != nil {
 				return err

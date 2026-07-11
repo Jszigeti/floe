@@ -102,6 +102,40 @@ func TestBackupCommandLogsFailure(t *testing.T) {
 	}
 }
 
+func TestBackupLogsFailedNotification(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	cfg, err := config.Default() // default destination is the iCloud Drive path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	installFakeRestic(t)
+	f.Handler = func(c run.Cmd) (string, error) {
+		switch {
+		case c.Name == "osascript":
+			return "", errors.New("notification center unavailable")
+		case c.Name == "security":
+			return "pw\n", nil
+		case c.Name == "brctl" && len(c.Args) > 0 && c.Args[0] == "quota":
+			return "1000000000 bytes of quota remaining in personal account", nil // below the 5 GiB low-quota threshold
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"backup"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("backup failed: %v\noutput:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "notification failed") {
+		t.Fatalf("output missing 'notification failed':\n%s", out.String())
+	}
+}
+
 func TestBackupLogsTimestampedLines(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)

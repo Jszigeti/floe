@@ -25,9 +25,13 @@ func newBackupCmd(d Deps) *cobra.Command {
 				Cfg:    cfg,
 				Client: client,
 				Runner: d.Runner,
-				Notify: func(title, msg string) { _ = notify.Send(ctx, d.Runner, title, msg) },
-				Now:    time.Now,
-				Log:    logf,
+				Notify: func(title, msg string) {
+					if err := notify.Send(ctx, d.Runner, title, msg); err != nil {
+						logf("notification failed: %v", err)
+					}
+				},
+				Now: time.Now,
+				Log: logf,
 			})
 			if err != nil {
 				logf("backup failed: %v", err)
