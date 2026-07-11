@@ -34,7 +34,7 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) ([]string, er
 	var warnings []string
 	brewfile := filepath.Join(dir, "Brewfile")
 	if _, err := r.Run(ctx, run.Cmd{Name: "brew", Args: []string{"bundle", "dump", "--force", "--file", brewfile}}); err != nil {
-		os.Remove(brewfile)
+		os.Remove(brewfile) // ignore not-exist
 		warnings = append(warnings, fmt.Sprintf("brew bundle dump failed: %v", err))
 	}
 	if w := dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, "mas.txt")); w != "" {
@@ -43,7 +43,9 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) ([]string, er
 	if w := dumpCommand(ctx, r, "crontab", []string{"-l"}, filepath.Join(dir, "crontab.txt")); w != "" {
 		warnings = append(warnings, w)
 	}
-	dumpApplications(appsRoot, filepath.Join(dir, "applications.txt"))
+	if w := dumpApplications(appsRoot, filepath.Join(dir, "applications.txt")); w != "" {
+		warnings = append(warnings, w)
+	}
 	return warnings, nil
 }
 
@@ -59,18 +61,27 @@ func dumpCommand(ctx context.Context, r run.Runner, name string, args []string, 
 		}
 		return ""
 	}
-	os.WriteFile(path, []byte(out), 0o644)
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		return fmt.Sprintf("writing %s: %v", filepath.Base(path), err)
+	}
 	return ""
 }
 
-func dumpApplications(appsRoot, path string) {
+func dumpApplications(appsRoot, path string) string {
 	entries, err := os.ReadDir(appsRoot)
 	if err != nil {
-		return
+		return ""
 	}
-	var out string
-	for _, e := range entries {
-		out += e.Name() + "\n"
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
 	}
-	os.WriteFile(path, []byte(out), 0o644)
+	out := strings.Join(names, "\n")
+	if out != "" {
+		out += "\n"
+	}
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		return fmt.Sprintf("writing %s: %v", filepath.Base(path), err)
+	}
+	return ""
 }

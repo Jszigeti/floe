@@ -60,6 +60,35 @@ func TestDumpWritesRecipeFiles(t *testing.T) {
 	}
 }
 
+func TestDumpWarnsOnWriteFailure(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	appsRoot := t.TempDir()
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	f := &run.Fake{Responses: map[string]run.Response{
+		"mas list":   {Out: "App 1\n"},
+		"crontab -l": {Out: "@daily true\n"},
+	}}
+
+	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "applications") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a warning mentioning applications.txt write failure, got %+v", warnings)
+	}
+}
+
 func TestDumpToleratesMissingTools(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
