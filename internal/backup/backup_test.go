@@ -3,6 +3,9 @@ package backup
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -279,6 +282,126 @@ func TestSkipsForgetWhenSyncStateUnknown(t *testing.T) {
 	}
 	if f.CalledWith("restic", "forget") {
 		t.Fatal("must not prune when sync state is unknown")
+	}
+}
+
+func TestManifestDumpFailureIsLoggedNotFatal(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Block the manifest dir with a regular file so manifest.Dump's MkdirAll fails.
+	if err := os.MkdirAll(filepath.Join(home, ".local/state/floe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".local/state/floe/manifest"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	d.Log = func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("manifest dump failure must not fail Run: %v", err)
+	}
+	found := false
+	for _, l := range logs {
+		if strings.Contains(l, "manifest dump skipped") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a manifest dump skipped log line, got %v", logs)
+	}
+}
+
+func TestPostHookFailureAbortsAndNotifies(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "sh" {
+			return "", errors.New("hook boom")
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	d.Cfg.Hooks.Post = []string{"exit 1"}
+	if err := Run(context.Background(), d); err == nil {
+		t.Fatal("want error")
+	}
+	found := false
+	for _, m := range n.msgs {
+		if strings.Contains(m, "post-hook") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want a post-hook failure notification, got %v", n.msgs)
+	}
+}
+
+func TestDigestMessageIncludesRepoSize(t *testing.T) {
+	f := &run.Fake{Responses: map[string]run.Response{
+		"restic stats --mode raw-data --json": {Out: `{"total_size":5000000000}`},
+	}}
+	d, n := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range n.msgs {
+		if strings.Contains(m, "GB") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want digest message to include repo size in GB, got %v", n.msgs)
+	}
+}
+
+func TestDigestStampAndIncompleteNoticeWriteFailuresAreLogged(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Block the whole state dir with a regular file so every digest stamp write fails.
+	if err := os.MkdirAll(filepath.Join(home, ".local/state"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".local/state/floe"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var logs []string
+	d.Log = func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("stamp write failures must not fail Run: %v", err)
+	}
+	wantIncomplete, wantDigest := false, false
+	for _, l := range logs {
+		if strings.Contains(l, "incomplete-notice stamp write failed") {
+			wantIncomplete = true
+		}
+	}
+	// The digest stamp write only happens if digest.Due fires; the incomplete
+	// backup's message overrides the healthy one, but the stamp is still written.
+	for _, l := range logs {
+		if strings.Contains(l, "digest stamp write failed") {
+			wantDigest = true
+		}
+	}
+	if !wantIncomplete {
+		t.Fatalf("want an incomplete-notice stamp write failure log, got %v", logs)
+	}
+	if !wantDigest {
+		t.Fatalf("want a digest stamp write failure log, got %v", logs)
 	}
 }
 
