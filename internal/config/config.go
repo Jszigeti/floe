@@ -71,6 +71,7 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, "Library/Application Support/Steam/steamapps/shadercache"),
 		filepath.Join(home, "miniconda3"),
 		filepath.Join(home, "anaconda3"),
+		filepath.Join(home, ".yarn/berry/cache"),
 		"node_modules",
 		"floe-restore-*",
 		".venv",
@@ -87,6 +88,11 @@ func DefaultExcludes(home string) []string {
 		".terraform",
 		"state.vscdb.backup",
 		"Crashpad",
+		// Chromium/Electron cache conventions (Chrome, Discord, Claude, Slack…).
+		"Cache",
+		"Code Cache",
+		"GPUCache",
+		"Service Worker",
 	}
 }
 

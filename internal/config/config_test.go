@@ -48,6 +48,12 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, "state.vscdb.backup") {
 		t.Fatal("want state.vscdb.backup excluded by default")
 	}
+	if !slices.Contains(c.Scope.Exclude, "GPUCache") {
+		t.Fatal("want chromium GPUCache excluded by default")
+	}
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, ".yarn/berry/cache")) {
+		t.Fatal("want yarn berry cache excluded by default")
+	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
