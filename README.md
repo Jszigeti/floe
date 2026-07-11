@@ -13,7 +13,7 @@
 
 iCloud Drive is sync, not backup. Overwrite a file and the mistake propagates to every device in seconds. Delete one and it is gone everywhere. Time Machine solves this, but only if you remember to plug in a disk.
 
-floe closes the gap: a daily snapshot of your Mac, encrypted, deduplicated and compressed, written into the iCloud storage you already pay for. Full history, one command to restore any version. Any synced folder works (Dropbox, Google Drive, an external disk). iCloud Drive is just the default.
+floe closes the gap: a daily snapshot of your home folder, encrypted, deduplicated and compressed, written into the iCloud storage you already pay for. Full history, one command to restore any version. Any synced folder works (Dropbox, Google Drive, an external disk). iCloud Drive is just the default.
 
 | Alternative | The catch |
 |---|---|
@@ -56,6 +56,14 @@ The wizard walks you through setup in about a minute: pick a destination (defaul
 | `floe doctor` | diagnose the iCloud pitfalls (see below) |
 | `floe passphrase` | print the passphrase stored in the Keychain |
 | `floe uninstall` | remove the daily schedule, keep all your data |
+
+## What gets backed up
+
+Your home folder, minus the noise. The defaults exclude what a fresh install can regenerate: caches, `node_modules` and friends, package-manager stores, SDKs, downloadable AI models, crash dumps, Docker's VM disk. Your documents, projects, photos, dotfiles and app settings (`~/Library/Preferences`, `~/Library/Application Support`) are all in. The wizard shows your largest directories at setup so you can trim further, and `paths` in the config accepts anything else you want covered.
+
+Apps and the system are not copied, they are captured as a recipe instead: every backup writes a small manifest (Homebrew `Brewfile`, App Store apps, the contents of `/Applications`, your crontab) into `~/.local/state/floe/manifest`, inside the snapshot. On a new Mac you restore your files with floe, then replay the manifest to reinstall everything. Same outcome as copying 80 GB of apps, for a few kilobytes.
+
+One macOS quirk to know: Mail, Messages and Safari data are protected by the system. Grant your terminal (and floe) Full Disk Access in System Settings → Privacy & Security if you want them included. Without it the backup still runs and you get a single "backup incomplete" notification instead of a failure. `floe doctor` checks this for you.
 
 ## How it works
 
