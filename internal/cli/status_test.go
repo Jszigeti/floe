@@ -100,9 +100,14 @@ func TestStatusShowsNotScheduledWhenLaunchagentMissing(t *testing.T) {
 func TestStatusShowsDeferredRetentionWhenQuotaFails(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "Library/Mobile Documents/com~apple~CloudDocs")
-	cfg.Save()
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	f.Handler = func(c run.Cmd) (string, error) {
 		joined := strings.Join(c.Args, " ")
 		switch {
@@ -134,9 +139,14 @@ func TestStatusShowsDeferredRetentionWhenQuotaFails(t *testing.T) {
 func TestStatusHidesSyncStateWhenSyncPendingFails(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "Library/Mobile Documents/com~apple~CloudDocs")
-	cfg.Save()
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	f.Handler = func(c run.Cmd) (string, error) {
 		joined := strings.Join(c.Args, " ")
 		switch {
@@ -172,9 +182,14 @@ func TestStatusHidesSyncStateWhenSyncPendingFails(t *testing.T) {
 func TestStatusShowsICloudQuotaAndSync(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
-	cfg, _ := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "Library/Mobile Documents/com~apple~CloudDocs")
-	cfg.Save()
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	f.Handler = func(c run.Cmd) (string, error) {
 		joined := strings.Join(c.Args, " ")
 		switch {

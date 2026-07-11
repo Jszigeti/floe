@@ -19,7 +19,10 @@ import (
 func setupHome(t *testing.T, f *run.Fake) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	cfg, _ := config.Default()
+	cfg, err := config.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "dest")
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -55,7 +58,10 @@ func TestBackupWithoutInitFails(t *testing.T) {
 
 func TestBuildClientFailsWhenResticBinaryMissing(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	cfg, _ := config.Default()
+	cfg, err := config.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "dest")
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -66,7 +72,7 @@ func TestBuildClientFailsWhenResticBinaryMissing(t *testing.T) {
 	}}
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetArgs([]string{"backup"})
-	err := cmd.Execute()
+	err = cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "floe init") {
 		t.Fatalf("err = %v, want a hint to run floe init", err)
 	}

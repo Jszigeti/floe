@@ -42,7 +42,10 @@ func TestDoctorWithoutConfigFails(t *testing.T) {
 func TestDoctorFailsWhenResticBinaryMissing(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
-	cfg, _ := config.Default()
+	cfg, err := config.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = filepath.Join(os.Getenv("HOME"), "dest")
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)

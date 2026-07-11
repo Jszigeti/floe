@@ -31,11 +31,17 @@ func TestEnsureBinaryDownloadsVerifiesAndInstalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, _ := os.ReadFile(p)
+	content, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Contains(content, []byte("fake-restic")) {
 		t.Fatalf("installed binary content = %q", content)
 	}
-	info, _ := os.Stat(p)
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if info.Mode()&0o111 == 0 {
 		t.Fatal("binary not executable")
 	}
@@ -157,7 +163,10 @@ func TestEnsureBinaryWriteFileFails(t *testing.T) {
 
 func TestEnsureBinaryRejectsBadChecksum(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	raw, _ := os.ReadFile("testdata/fake_restic.bz2")
+	raw, err := os.ReadFile("testdata/fake_restic.bz2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(fixtureHandler(raw))
 	t.Cleanup(srv.Close)
 	withChecksum(t, "deadbeef")
@@ -168,9 +177,16 @@ func TestEnsureBinaryRejectsBadChecksum(t *testing.T) {
 
 func TestEnsureBinarySkipsWhenPresent(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	p, _ := BinPath()
-	os.MkdirAll(filepathDir(p), 0o755)
-	os.WriteFile(p, []byte("existing"), 0o755)
+	p, err := BinPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepathDir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("existing"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	got, err := EnsureBinary(context.Background(), "http://127.0.0.1:1") // unreachable: must not be hit
 	if err != nil || got != p {
 		t.Fatalf("got %q, %v", got, err)

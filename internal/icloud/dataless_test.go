@@ -15,8 +15,12 @@ const sfDatalessTest = 0x40000000
 
 func TestDatalessFilesFindsFlaggedFiles(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a"), nil, 0o644)
-	os.WriteFile(filepath.Join(dir, "b"), nil, 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "a"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	fn := func(p string) (uint32, error) {
 		if filepath.Base(p) == "b" {
 			return sfDatalessTest, nil

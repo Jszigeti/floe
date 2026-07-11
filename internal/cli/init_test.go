@@ -54,7 +54,9 @@ func TestInitWizardEndToEnd(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
@@ -136,7 +138,9 @@ func TestInitReusesExistingPassphrase(t *testing.T) {
 		"security find-generic-password -s floe -a restic -w": {Out: "existing-pass\n"},
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
@@ -169,7 +173,9 @@ func TestInitAbortsWhenKeychainSetFails(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
@@ -194,9 +200,14 @@ func TestInitPromptScopeExcludesValidPickIgnoresJunk(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	baseline, _ := config.Default()
+	baseline, err := config.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
@@ -232,9 +243,13 @@ func TestInitFailsWhenLaunchdInstallFails(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Block Library/LaunchAgents with a regular file so launchd.Install fails.
-	os.MkdirAll(filepath.Join(home, "Library"), 0o755)
+	if err := os.MkdirAll(filepath.Join(home, "Library"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(home, "Library/LaunchAgents"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +280,9 @@ func TestInitFailsWhenFirstBackupFails(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
@@ -290,7 +307,9 @@ func TestInitFailsWhenRepoDirCannotBeCreated(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Block dest/Floe.backup with a regular file so os.MkdirAll(repo, ...) fails.
 	if err := os.WriteFile(filepath.Join(dest, "Floe.backup"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
@@ -322,7 +341,9 @@ func TestInitWrapsResticInitFailure(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
@@ -348,7 +369,9 @@ func TestInitFailsWhenConfigSaveFails(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Make ~/.config/floe read-only so cfg.Save() fails.
 	cfgDir := filepath.Join(home, ".config/floe")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -385,7 +408,9 @@ func TestInitLogsManifestWarningDuringFirstBackup(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
@@ -414,7 +439,9 @@ func TestInitExpandsTildeDestination(t *testing.T) {
 		}
 		return "", nil
 	}
-	os.MkdirAll(filepath.Join(home, "dest"), 0o755)
+	if err := os.MkdirAll(filepath.Join(home, "dest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
@@ -481,7 +508,9 @@ func TestInitAbortsOnAmbiguousKeychainError(t *testing.T) {
 		return "", nil
 	}
 	dest := filepath.Join(home, "dest")
-	os.MkdirAll(dest, 0o755)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)

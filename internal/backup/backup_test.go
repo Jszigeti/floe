@@ -26,7 +26,10 @@ func deps(t *testing.T, f *run.Fake) (Deps, *notified) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	n := &notified{}
-	cfg, _ := config.Default()
+	cfg, err := config.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.Destination = "/plain/dest" // not iCloud unless a test overrides
 	return Deps{
 		Cfg:    cfg,

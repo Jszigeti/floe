@@ -30,10 +30,16 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 
 	home := os.Getenv("HOME")
 	src := filepath.Join(home, "data")
-	os.MkdirAll(src, 0o755)
-	os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v1"), 0o644)
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	repo := filepath.Join(home, "dest/repo")
-	os.MkdirAll(repo, 0o755)
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	client := &restic.Client{Bin: bin, Repo: repo, Pass: "integration-pw", R: run.ExecRunner{}}
 	if err := client.Init(ctx); err != nil {
@@ -52,7 +58,9 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 	if err := backup.Run(ctx, d); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v2"), 0o644)
+	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := backup.Run(ctx, d); err != nil {
 		t.Fatal(err)
 	}
