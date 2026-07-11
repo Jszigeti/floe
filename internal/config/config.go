@@ -62,6 +62,12 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, ".ollama/models"),
 		filepath.Join(home, ".m2/repository"),
 		filepath.Join(home, ".vscode/extensions"),
+		filepath.Join(home, ".cursor/extensions"),
+		filepath.Join(home, "Library/pnpm"),
+		filepath.Join(home, "Library/Application Support/Claude/vm_bundles"),
+		filepath.Join(home, "Library/Application Support/Google/Chrome/OptGuideOnDeviceModel"),
+		filepath.Join(home, "Library/Application Support/Google/GoogleUpdater"),
+		filepath.Join(home, "Library/Application Support/Steam/steamapps"),
 		filepath.Join(home, "miniconda3"),
 		filepath.Join(home, "anaconda3"),
 		"node_modules",
@@ -78,6 +84,8 @@ func DefaultExcludes(home string) []string {
 		".pnpm-store",
 		".tox",
 		".terraform",
+		"state.vscdb.backup",
+		"Crashpad",
 	}
 }
 

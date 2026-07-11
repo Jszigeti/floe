@@ -42,6 +42,12 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, ".pytest_cache") {
 		t.Fatal("want .pytest_cache excluded by default")
 	}
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/pnpm")) {
+		t.Fatal("want Library/pnpm excluded by default")
+	}
+	if !slices.Contains(c.Scope.Exclude, "state.vscdb.backup") {
+		t.Fatal("want state.vscdb.backup excluded by default")
+	}
 }
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
