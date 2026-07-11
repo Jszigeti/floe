@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -33,9 +34,17 @@ func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	return c.R.Run(ctx, run.Cmd{Name: c.Bin, Args: args, Env: c.env()})
 }
 
-func (c *Client) IsInitialized(ctx context.Context) bool {
+func (c *Client) IsInitialized(ctx context.Context) (bool, error) {
 	_, err := c.run(ctx, "cat", "config")
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	// restic exits 1 both for a missing repo and for real failures — only the
+	// missing-repo phrasing means "not initialized".
+	if strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Is there a repository") {
+		return false, nil
+	}
+	return false, err
 }
 
 func (c *Client) Init(ctx context.Context) error {

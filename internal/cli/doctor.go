@@ -72,7 +72,11 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					if err != nil {
 						return false, false, err.Error()
 					}
-					if !client.IsInitialized(ctx) {
+					initialized, err := client.IsInitialized(ctx)
+					if err != nil {
+						return false, false, err.Error()
+					}
+					if !initialized {
 						return false, false, "unreachable or not initialized"
 					}
 					return true, false, repo

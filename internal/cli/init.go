@@ -168,7 +168,11 @@ func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass
 		return nil, cfg, err
 	}
 	client := &restic.Client{Bin: bin, Repo: repo, Pass: pass, R: d.Runner, Progress: progress}
-	if !client.IsInitialized(ctx) {
+	initialized, err := client.IsInitialized(ctx)
+	if err != nil {
+		return nil, cfg, fmt.Errorf("checking repository: %w", err)
+	}
+	if !initialized {
 		if err := client.Init(ctx); err != nil {
 			return nil, cfg, fmt.Errorf("initializing repository: %w", err)
 		}

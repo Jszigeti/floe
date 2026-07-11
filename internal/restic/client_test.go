@@ -25,12 +25,23 @@ func TestClientInjectsRepoAndPasswordEnv(t *testing.T) {
 
 func TestIsInitialized(t *testing.T) {
 	ok := &run.Fake{}
-	if !newTestClient(ok).IsInitialized(context.Background()) {
-		t.Fatal("want initialized when cat config succeeds")
+	initialized, err := newTestClient(ok).IsInitialized(context.Background())
+	if err != nil || !initialized {
+		t.Fatalf("initialized = %v, err = %v, want true, nil", initialized, err)
 	}
-	bad := &run.Fake{Default: run.Response{Err: errors.New("no repo")}}
-	if newTestClient(bad).IsInitialized(context.Background()) {
-		t.Fatal("want not initialized on error")
+
+	missingRepoErr := errors.New(`Fatal: unable to open config file: stat config: no such file or directory
+Is there a repository at the following location?`)
+	missing := &run.Fake{Default: run.Response{Err: missingRepoErr}}
+	initialized, err = newTestClient(missing).IsInitialized(context.Background())
+	if err != nil || initialized {
+		t.Fatalf("initialized = %v, err = %v, want false, nil", initialized, err)
+	}
+
+	broken := &run.Fake{Default: run.Response{Err: errors.New("connection refused")}}
+	initialized, err = newTestClient(broken).IsInitialized(context.Background())
+	if err == nil || initialized {
+		t.Fatalf("initialized = %v, err = %v, want false, non-nil", initialized, err)
 	}
 }
 

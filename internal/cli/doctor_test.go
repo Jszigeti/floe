@@ -107,6 +107,30 @@ func TestDoctorFailsWhenRepositoryUnreachable(t *testing.T) {
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("doctor must exit non-zero when the repository is unreachable")
 	}
+	if !strings.Contains(out.String(), "repo unreachable") {
+		t.Fatalf("doctor output missing repository execution error:\n%s", out.String())
+	}
+}
+
+func TestDoctorFailsWhenRepositoryNotInitialized(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "cat" {
+			return "", errRepoMissing
+		}
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("doctor must exit non-zero when the repository is not initialized")
+	}
 	if !strings.Contains(out.String(), "unreachable or not initialized") {
 		t.Fatalf("doctor output missing repository failure:\n%s", out.String())
 	}

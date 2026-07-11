@@ -14,6 +14,10 @@ import (
 	"github.com/Jszigeti/floe/internal/run"
 )
 
+// errRepoMissing mirrors restic's real missing-repo phrasing so IsInitialized
+// routes to (false, nil) rather than a real execution error.
+var errRepoMissing = errors.New("Fatal: unable to open config file: stat config: no such file or directory\nIs there a repository at the following location?")
+
 func TestInitWizardEndToEnd(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
@@ -28,7 +32,7 @@ func TestInitWizardEndToEnd(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -176,7 +180,7 @@ func TestInitPromptScopeExcludesValidPickIgnoresJunk(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -216,7 +220,7 @@ func TestInitFailsWhenLaunchdInstallFails(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -248,7 +252,7 @@ func TestInitFailsWhenFirstBackupFails(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		if len(c.Args) > 0 && c.Args[0] == "backup" {
 			return "", errors.New("disk full")
@@ -278,7 +282,7 @@ func TestInitFailsWhenRepoDirCannotBeCreated(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -309,7 +313,7 @@ func TestInitWrapsResticInitFailure(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist // IsInitialized → false, so client.Init runs
+			return "", errRepoMissing
 		}
 		if len(c.Args) > 0 && c.Args[0] == "init" {
 			return "", errors.New("repo init boom")
@@ -340,7 +344,7 @@ func TestInitFailsWhenConfigSaveFails(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -376,7 +380,7 @@ func TestInitLogsManifestWarningDuringFirstBackup(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		if c.Name == "crontab" {
 			return "", errors.New("no crontab for user")
@@ -411,7 +415,7 @@ func TestInitExpandsTildeDestination(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -445,7 +449,7 @@ func TestInitRejectsMissingDestination(t *testing.T) {
 			return "", os.ErrNotExist
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
@@ -481,7 +485,7 @@ func TestInitAbortsOnAmbiguousKeychainError(t *testing.T) {
 			return "", errors.New("keychain locked")
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
-			return "", os.ErrNotExist
+			return "", errRepoMissing
 		}
 		return "", nil
 	}
