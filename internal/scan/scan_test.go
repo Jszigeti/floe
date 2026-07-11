@@ -30,6 +30,34 @@ func TestExcluded(t *testing.T) {
 	}
 }
 
+func TestEstimateNonexistentRootReturnsZeroNoError(t *testing.T) {
+	// WalkDir feeds the stat error for the missing root to our callback, which
+	// treats unreadable entries as skippable rather than fatal — so this is a
+	// zero-result, no-error outcome, not an error return.
+	root := filepath.Join(t.TempDir(), "does-not-exist")
+	total, top, err := Estimate(root, nil)
+	if err != nil {
+		t.Fatalf("err = %v, want nil for a nonexistent root", err)
+	}
+	if total != 0 || len(top) != 0 {
+		t.Fatalf("total = %d, top = %v, want zero result", total, top)
+	}
+}
+
+func TestEstimateExcludesMatchingFiles(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "keep.txt"), 50)
+	writeFile(t, filepath.Join(root, "state.vscdb.backup"), 9999)
+
+	total, _, err := Estimate(root, []string{"state.vscdb.backup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 50 {
+		t.Fatalf("total = %d, want 50 (excluded file must not count)", total)
+	}
+}
+
 func TestEstimateSumsAndRanks(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "big/data.bin"), 3000)
