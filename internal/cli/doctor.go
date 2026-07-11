@@ -20,7 +20,7 @@ import (
 // into a doctor check's (ok, warn, msg) tuple.
 func interpretFDAProbe(err error) (bool, bool, string) {
 	if errors.Is(err, fs.ErrPermission) {
-		return true, true, "denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access in System Settings → Privacy & Security"
+		return true, true, "denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access to your terminal and to floe in System Settings → Privacy & Security"
 	}
 	return true, false, "ok"
 }
