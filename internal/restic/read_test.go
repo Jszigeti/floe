@@ -27,6 +27,22 @@ func TestSnapshotsParsesJSON(t *testing.T) {
 	}
 }
 
+func TestSnapshotsRunnerError(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Err: errors.New("repo unreachable")}}
+	if _, err := newTestClient(f).Snapshots(context.Background()); err == nil {
+		t.Fatal("want error when restic fails")
+	}
+}
+
+func TestSnapshotsParseError(t *testing.T) {
+	f := &run.Fake{Responses: map[string]run.Response{
+		"restic snapshots --json": {Out: "not json"},
+	}}
+	if _, err := newTestClient(f).Snapshots(context.Background()); err == nil {
+		t.Fatal("want error for malformed JSON")
+	}
+}
+
 func TestForgetBuildsRetentionArgs(t *testing.T) {
 	f := &run.Fake{}
 	newTestClient(f).Forget(context.Background(), config.Retention{Daily: 7, Weekly: 4, Monthly: 6})
@@ -55,6 +71,22 @@ func TestRepoSizeParsesStats(t *testing.T) {
 	n, err := newTestClient(f).RepoSize(context.Background())
 	if err != nil || n != 123456789 {
 		t.Fatalf("n = %d, err = %v", n, err)
+	}
+}
+
+func TestRepoSizeRunnerError(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Err: errors.New("repo unreachable")}}
+	if _, err := newTestClient(f).RepoSize(context.Background()); err == nil {
+		t.Fatal("want error when restic fails")
+	}
+}
+
+func TestRepoSizeParseError(t *testing.T) {
+	f := &run.Fake{Responses: map[string]run.Response{
+		"restic stats --mode raw-data --json": {Out: "not json"},
+	}}
+	if _, err := newTestClient(f).RepoSize(context.Background()); err == nil {
+		t.Fatal("want error for malformed JSON")
 	}
 }
 

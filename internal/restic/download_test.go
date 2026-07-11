@@ -41,6 +41,120 @@ func TestEnsureBinaryDownloadsVerifiesAndInstalls(t *testing.T) {
 	}
 }
 
+func TestBinPathHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := BinPath(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestEnsureBinaryHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := EnsureBinary(context.Background(), "http://example.com"); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestEnsureBinaryUnsupportedArch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	prev, ok := checksums[runtime.GOARCH]
+	delete(checksums, runtime.GOARCH)
+	t.Cleanup(func() {
+		if ok {
+			checksums[runtime.GOARCH] = prev
+		}
+	})
+	if _, err := EnsureBinary(context.Background(), "http://example.com"); err == nil {
+		t.Fatal("want error for unsupported architecture")
+	}
+}
+
+func TestEnsureBinaryRequestCreationError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	// A control character in the URL makes http.NewRequestWithContext fail to parse it.
+	if _, err := EnsureBinary(context.Background(), "http://example.com/\x7f"); err == nil {
+		t.Fatal("want error when the request cannot be constructed")
+	}
+}
+
+func TestEnsureBinaryNonOKStatus(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := EnsureBinary(context.Background(), srv.URL); err == nil {
+		t.Fatal("want error on non-200 response")
+	}
+}
+
+func TestEnsureBinaryBadBzip2Payload(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	raw := []byte("not actually bzip2 data")
+	srv := httptest.NewServer(fixtureHandler(raw))
+	t.Cleanup(srv.Close)
+	withTestChecksum(t, raw)
+
+	if _, err := EnsureBinary(context.Background(), srv.URL); err == nil {
+		t.Fatal("want decompression error for a bad bzip2 payload")
+	}
+}
+
+func TestEnsureBinaryConnectionRefused(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if _, err := EnsureBinary(context.Background(), "http://127.0.0.1:1"); err == nil {
+		t.Fatal("want error when the download server is unreachable")
+	}
+}
+
+func TestEnsureBinaryMkdirAllFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Block .local/share/floe/bin with a regular file so MkdirAll fails.
+	if err := os.MkdirAll(filepath.Join(home, ".local/share/floe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".local/share/floe/bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("testdata/fake_restic.bz2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(fixtureHandler(raw))
+	t.Cleanup(srv.Close)
+	withTestChecksum(t, raw)
+
+	if _, err := EnsureBinary(context.Background(), srv.URL); err == nil {
+		t.Fatal("want error when the bin dir cannot be created")
+	}
+}
+
+func TestEnsureBinaryWriteFileFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".local/share/floe/bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	raw, err := os.ReadFile("testdata/fake_restic.bz2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(fixtureHandler(raw))
+	t.Cleanup(srv.Close)
+	withTestChecksum(t, raw)
+
+	if _, err := EnsureBinary(context.Background(), srv.URL); err == nil {
+		t.Fatal("want error when the binary file cannot be written")
+	}
+}
+
 func TestEnsureBinaryRejectsBadChecksum(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	raw, _ := os.ReadFile("testdata/fake_restic.bz2")
