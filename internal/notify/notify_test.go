@@ -8,32 +8,42 @@ import (
 	"github.com/Jszigeti/floe/internal/run"
 )
 
-func TestSendBuildsAppleScript(t *testing.T) {
-	f := &run.Fake{}
-	if err := Send(context.Background(), f, "floe", "backup failed"); err != nil {
-		t.Fatal(err)
+func TestSend(t *testing.T) {
+	tests := []struct {
+		name       string
+		msg        string
+		wantSubstr string
+	}{
+		{
+			name:       "builds AppleScript notification",
+			msg:        "backup failed",
+			wantSubstr: `display notification "backup failed" with title "floe"`,
+		},
+		{
+			name:       "escapes quotes",
+			msg:        `error: "boom"`,
+			wantSubstr: `\"boom\"`,
+		},
+		{
+			name:       "escapes backslashes",
+			msg:        `path: C:\path`,
+			wantSubstr: `C:\\path`,
+		},
 	}
-	c := f.Calls[0]
-	if c.Name != "osascript" || c.Args[0] != "-e" {
-		t.Fatalf("call = %+v", c)
-	}
-	if !strings.Contains(c.Args[1], `display notification "backup failed" with title "floe"`) {
-		t.Fatalf("script = %q", c.Args[1])
-	}
-}
 
-func TestSendEscapesQuotes(t *testing.T) {
-	f := &run.Fake{}
-	Send(context.Background(), f, "floe", `error: "boom"`)
-	if !strings.Contains(f.Calls[0].Args[1], `\"boom\"`) {
-		t.Fatalf("script = %q", f.Calls[0].Args[1])
-	}
-}
-
-func TestSendEscapesBackslashes(t *testing.T) {
-	f := &run.Fake{}
-	Send(context.Background(), f, "floe", `path: C:\path`)
-	if !strings.Contains(f.Calls[0].Args[1], `C:\\path`) {
-		t.Fatalf("script = %q", f.Calls[0].Args[1])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &run.Fake{}
+			if err := Send(context.Background(), f, "floe", tt.msg); err != nil {
+				t.Fatal(err)
+			}
+			c := f.Calls[0]
+			if c.Name != "osascript" || c.Args[0] != "-e" {
+				t.Fatalf("call = %+v, want osascript -e", c)
+			}
+			if got := c.Args[1]; !strings.Contains(got, tt.wantSubstr) {
+				t.Errorf("script = %q, want substring %q", got, tt.wantSubstr)
+			}
+		})
 	}
 }

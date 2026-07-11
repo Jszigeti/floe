@@ -10,6 +10,7 @@ import (
 )
 
 func snapshotFake(t *testing.T) *run.Fake {
+	t.Helper()
 	f := &run.Fake{}
 	setupHome(t, f)
 	f.Handler = func(c run.Cmd) (string, error) {

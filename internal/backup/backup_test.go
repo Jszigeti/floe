@@ -23,6 +23,7 @@ func (n *notified) fn(title, msg string) {
 }
 
 func deps(t *testing.T, f *run.Fake) (Deps, *notified) {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	n := &notified{}
 	cfg, _ := config.Default()
