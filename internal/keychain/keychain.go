@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io/fs"
 	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
@@ -44,7 +43,7 @@ func Get(ctx context.Context, r run.Runner) (string, error) {
 		"find-generic-password", "-s", service, "-a", account, "-w",
 	}})
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || strings.Contains(err.Error(), "could not be found") {
+		if strings.Contains(err.Error(), "could not be found") {
 			return "", fmt.Errorf("%w: %v", ErrNotFound, err)
 		}
 		return "", fmt.Errorf("reading keychain: %w", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"strings"
 	"testing"
 
@@ -65,7 +64,6 @@ func TestGetClassifiesErrors(t *testing.T) {
 		wantMsg      string
 	}{
 		{"security not found message", notFoundText, true, ""},
-		{"fs.ErrNotExist", fs.ErrNotExist, true, ""},
 		{"other error", errors.New("keychain locked"), false, "reading keychain"},
 	}
 	for _, tc := range cases {

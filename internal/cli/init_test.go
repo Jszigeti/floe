@@ -18,6 +18,10 @@ import (
 // routes to (false, nil) rather than a real execution error.
 var errRepoMissing = errors.New("Fatal: unable to open config file: stat config: no such file or directory\nIs there a repository at the following location?")
 
+// errKeychainNotFound mirrors security(1)'s real not-found phrasing so
+// keychain.Get routes to ErrNotFound rather than a generic read failure.
+var errKeychainNotFound = errors.New("security find-generic-password ...: exit status 44: The specified item could not be found.")
+
 func TestInitWizardEndToEnd(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
@@ -29,7 +33,7 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	// keychain lookup fails → wizard must generate and store a new passphrase
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
 			return "", errRepoMissing
@@ -95,7 +99,7 @@ func TestInitRejectsRelativeDestination(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		return "", nil
 	}
@@ -150,7 +154,7 @@ func TestInitAbortsWhenKeychainSetFails(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if c.Name == "security" && c.Args[0] == "add-generic-password" {
 			return "", errors.New("keychain locked")
@@ -177,7 +181,7 @@ func TestInitPromptScopeExcludesValidPickIgnoresJunk(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -217,7 +221,7 @@ func TestInitFailsWhenLaunchdInstallFails(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -249,7 +253,7 @@ func TestInitFailsWhenFirstBackupFails(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -279,7 +283,7 @@ func TestInitFailsWhenRepoDirCannotBeCreated(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -310,7 +314,7 @@ func TestInitWrapsResticInitFailure(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -341,7 +345,7 @@ func TestInitFailsWhenConfigSaveFails(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -377,7 +381,7 @@ func TestInitLogsManifestWarningDuringFirstBackup(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" {
 			return "", errRepoMissing
@@ -412,7 +416,7 @@ func TestInitExpandsTildeDestination(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
 			return "", errRepoMissing
@@ -446,7 +450,7 @@ func TestInitRejectsMissingDestination(t *testing.T) {
 	os.WriteFile(bin, []byte("fake"), 0o755)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
-			return "", os.ErrNotExist
+			return "", errKeychainNotFound
 		}
 		if len(c.Args) > 1 && c.Args[0] == "cat" { // IsInitialized → false
 			return "", errRepoMissing
