@@ -59,7 +59,7 @@ The wizard walks you through setup in about a minute: pick a destination (defaul
 
 ## What gets backed up
 
-Your home folder, minus the noise. The defaults exclude what a fresh install can regenerate: caches, `node_modules` and friends, package-manager stores, SDKs, downloadable AI models, crash dumps, Docker's VM disk. Your documents, projects, photos, dotfiles and app settings (`~/Library/Preferences`, `~/Library/Application Support`) are all in. The wizard shows your largest directories at setup so you can trim further, and `paths` in the config accepts anything else you want covered.
+Your home folder, minus the noise. The defaults exclude what a fresh install can regenerate: caches, `node_modules` and friends, package-manager stores, SDKs, downloadable AI models, crash dumps, Docker's VM disk. Your documents, projects, photos, dotfiles and app settings (`~/Library/Preferences`, `~/Library/Application Support`) are all in. The wizard shows your largest directories at setup so you can trim further, and `paths` in the config accepts anything else you want covered. One default is a judgment call: excluding Ollama models assumes they can be pulled again, so remove that entry from the config if you build custom models locally.
 
 Apps and the system are not copied, they are captured as a recipe instead: every backup writes a small manifest (Homebrew `Brewfile`, App Store apps, the contents of `/Applications`, your crontab) into `~/.local/state/floe/manifest`, inside the snapshot. On a new Mac you restore your files with floe, then replay the manifest to reinstall everything. Same outcome as copying 80 GB of apps, for a few kilobytes.
 
