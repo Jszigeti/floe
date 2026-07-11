@@ -56,6 +56,107 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := Default(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestPathHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := Path(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestLoadHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestLoadMalformedTOML(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("not = [valid toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load()
+	if err == nil || !strings.Contains(err.Error(), "reading") {
+		t.Fatalf("err = %v, want a wrapped reading error", err)
+	}
+}
+
+func TestNormalizeDestinationHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := NormalizeDestination("~/dest"); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestNormalizeDestinationExpandsHomeVar(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	got, err := NormalizeDestination("$HOME/dest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, "dest"); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got, err = NormalizeDestination("$HOME")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != home {
+		t.Fatalf("got %q, want %q", got, home)
+	}
+}
+
+func TestSavePathHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if err := (Config{Destination: "/tmp/x"}).Save(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestSaveMkdirAllFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Block the .config path with a regular file so MkdirAll(.config/floe) fails.
+	if err := os.WriteFile(filepath.Join(home, ".config"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Config{Destination: "/tmp/x"}).Save(); err == nil {
+		t.Fatal("want error when the config dir cannot be created")
+	}
+}
+
+func TestSaveCreateFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".config/floe")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := (Config{Destination: "/tmp/x"}).Save(); err == nil {
+		t.Fatal("want error when the config file cannot be created")
+	}
+}
+
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	c, _ := Default()
