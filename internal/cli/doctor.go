@@ -2,8 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/icloud"
@@ -12,6 +15,15 @@ import (
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/spf13/cobra"
 )
+
+// interpretFDAProbe classifies the result of reading a TCC-protected directory
+// into a doctor check's (ok, warn, msg) tuple.
+func interpretFDAProbe(err error) (bool, bool, string) {
+	if errors.Is(err, fs.ErrPermission) {
+		return true, true, "denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access in System Settings → Privacy & Security"
+	}
+	return true, false, "ok"
+}
 
 type check struct {
 	name string
@@ -64,6 +76,15 @@ func newDoctorCmd(d Deps) *cobra.Command {
 						return false, false, "unreachable or not initialized"
 					}
 					return true, false, repo
+				}},
+				{"full disk access", func(ctx context.Context) (bool, bool, string) {
+					home, err := os.UserHomeDir()
+					if err != nil {
+						return false, false, err.Error()
+					}
+					// ~/Library/Mail is TCC-protected: readable only with Full Disk Access.
+					_, err = os.ReadDir(filepath.Join(home, "Library/Mail"))
+					return interpretFDAProbe(err)
 				}},
 			}
 			if icloud.IsICloudPath(cfg.Destination) {

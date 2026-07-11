@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,46 @@ func TestDoctorAllHealthy(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "✗") {
 		t.Fatalf("unexpected failure:\n%s", out.String())
+	}
+}
+
+func TestDoctorChecksFullDiskAccess(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f) // Mail dir doesn't exist under an isolated HOME
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("healthy doctor must exit 0: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "full disk access") {
+		t.Fatalf("doctor output missing full disk access check:\n%s", s)
+	}
+	if strings.Contains(s, "✗") {
+		t.Fatalf("unexpected failure:\n%s", s)
+	}
+}
+
+func TestInterpretFDAProbe(t *testing.T) {
+	cases := []struct {
+		name         string
+		err          error
+		wantOk, warn bool
+	}{
+		{"nil", nil, true, false},
+		{"permission", fmt.Errorf("open: %w", fs.ErrPermission), true, true},
+		{"not exist", fs.ErrNotExist, true, false},
+		{"other", errors.New("other"), true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, warn, msg := interpretFDAProbe(c.err)
+			if ok != c.wantOk || warn != c.warn {
+				t.Fatalf("interpretFDAProbe(%v) = (%v, %v, %q), want ok=%v warn=%v", c.err, ok, warn, msg, c.wantOk, c.warn)
+			}
+		})
 	}
 }
 
