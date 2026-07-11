@@ -6,14 +6,19 @@ macOS CLI in Go that gives Time Machine-style backups (daily snapshots, full his
 
 ## Project status
 
-- ✅ Design spec validated: `docs/superpowers/specs/2026-07-10-floe-design.md`
-- ✅ Implementation plan ready: `docs/superpowers/plans/2026-07-10-floe-v0.1.md` (20 TDD tasks)
-- ⬜ Implementation not started — no Go code exists yet
-- ⬜ GitHub repo not created yet (target: `Jszigeti/floe`, public, MIT)
+- ✅ Design spec: `docs/superpowers/specs/2026-07-10-floe-design.md` (historical — some decisions evolved, see below)
+- ✅ Implementation plan: `docs/superpowers/plans/2026-07-10-floe-v0.1.md` (historical)
+- ✅ Fully implemented and audited: all commands (`init`, `backup`, `status`, `snapshots`, `restore`, `doctor`, `passphrase`, `uninstall`), 96%+ unit coverage, integration + e2e suites against real restic, golangci-lint clean
+- ⬜ GitHub repo not created yet (target: `Jszigeti/floe`, public, MIT); tag `v0.1.0` triggers goreleaser
 
-## How to implement
+## Deviations from the original spec (deliberate, reviewed)
 
-Execute the plan task-by-task with `superpowers:subagent-driven-development` (fresh subagent per task, review between tasks). Tasks are ordered by dependency — do them in sequence. Each task is self-contained: files, complete test code, complete implementation, exact commands, commit message.
+- Retention runs BEFORE the backup (spec said after) — otherwise the just-written packs keep iCloud sync pending and prune would defer forever.
+- restic pinned at 0.19.1 (spec's 0.18.1 was an example); missing repo detected via restic's documented exit code 10.
+- restic exit code 3 = "incomplete" (snapshot written, some files unreadable — TCC): weekly-throttled notice, not a failure.
+- Schedule displayed in 12-hour clock (1:00 PM); quota labels in GiB.
+- Built-in system manifest (Brewfile, mas list, /Applications, crontab) written to `~/.local/state/floe/manifest/` on every backup, best-effort.
+- Product line: defaults stay audience-agnostic — excludes only cover regenerable content, app data is never excluded by default.
 
 ## Hard constraints
 
@@ -27,10 +32,12 @@ Execute the plan task-by-task with `superpowers:subagent-driven-development` (fr
 ## Commands
 
 ```bash
-go test ./...                              # unit tests (offline)
-go test -tags integration ./integration/  # real restic cycle (downloads binary)
-go vet ./...
-sh -n install.sh                           # once Task 20 lands
+go test ./...                              # unit tests (offline), CI enforces ≥90% coverage
+go test -tags integration ./integration/   # real restic cycle (network on first run)
+go test -tags e2e ./e2e/ -timeout 15m      # full CLI surface against real restic
+go vet ./... && gofmt -l .                 # must be clean
+golangci-lint run ./...                    # v2 standard set, must be 0 issues
+goreleaser release --snapshot --clean      # validate the release pipeline locally
 ```
 
 ## Key design decisions (full rationale in the spec)
