@@ -172,7 +172,7 @@ func TestE2E(t *testing.T) {
 	notesPath := filepath.Join(home, "Documents", "notes.txt")
 	configPath := filepath.Join(home, ".config/floe/config.toml")
 
-	var id1, id2 string
+	var id1 string
 
 	t.Run("no_config_errors", func(t *testing.T) {
 		out, code := run(t, "", "backup")
@@ -211,8 +211,8 @@ func TestE2E(t *testing.T) {
 		}
 		mustContain(t, out, "password manager")
 		mustContain(t, out, "1:00 PM")
-		mustContain(t, out, "snapshot")
-		mustContain(t, out, "saved")
+		mustContain(t, out, "Running first backup")
+		// Restic's own progress wording is version-dependent — snapshot existence is asserted via floe snapshots in the next subtest.
 
 		info, err := os.Stat(store)
 		if err != nil || info.Size() == 0 {
@@ -246,7 +246,6 @@ func TestE2E(t *testing.T) {
 		}
 		mustContain(t, lines[0], "ID")
 		id1 = strings.Fields(lines[1])[0]
-		id2 = strings.Fields(lines[2])[0]
 	})
 
 	t.Run("status_icloud", func(t *testing.T) {
@@ -281,7 +280,6 @@ func TestE2E(t *testing.T) {
 		if err != nil || string(got) != "v2" {
 			t.Fatalf("restored notes.txt = %q, err = %v, want v2", got, err)
 		}
-		_ = id2 // id2 stays only for potential ad-hoc debugging; latest already covers it
 	})
 
 	t.Run("restore_bogus_id", func(t *testing.T) {
