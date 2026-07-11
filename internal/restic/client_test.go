@@ -30,9 +30,11 @@ func TestIsInitialized(t *testing.T) {
 		t.Fatalf("initialized = %v, err = %v, want true, nil", initialized, err)
 	}
 
-	missingRepoErr := errors.New(`Fatal: unable to open config file: stat config: no such file or directory
-Is there a repository at the following location?`)
-	missing := &run.Fake{Default: run.Response{Err: missingRepoErr}}
+	_, exit10Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 10"}})
+	if exit10Err == nil {
+		t.Fatal("want exit 10 to produce an error")
+	}
+	missing := &run.Fake{Default: run.Response{Err: exit10Err}}
 	initialized, err = newTestClient(missing).IsInitialized(context.Background())
 	if err != nil || initialized {
 		t.Fatalf("initialized = %v, err = %v, want false, nil", initialized, err)

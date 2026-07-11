@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,11 +16,15 @@ import (
 	"github.com/Jszigeti/floe/internal/run"
 )
 
-// errRepoMissing mirrors restic's real missing-repo phrasing so IsInitialized
-// routes to (false, nil) rather than a real execution error.
-//
-//nolint:staticcheck // verbatim restic output, not a Go error string we author
-var errRepoMissing = errors.New("Fatal: unable to open config file: stat config: no such file or directory\nIs there a repository at the following location?")
+// errRepoMissing captures restic's authentic exit-10 error (the stable,
+// documented signal for "repository does not exist") so IsInitialized routes
+// to (false, nil) rather than a real execution error.
+var errRepoMissing = capturedExitErr(10)
+
+func capturedExitErr(code int) error {
+	_, err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit " + strconv.Itoa(code)}})
+	return err
+}
 
 // errKeychainNotFound mirrors security(1)'s real not-found phrasing so
 // keychain.Get routes to ErrNotFound rather than a generic read failure.

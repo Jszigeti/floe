@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -39,9 +38,9 @@ func (c *Client) IsInitialized(ctx context.Context) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	// restic exits 1 both for a missing repo and for real failures — only the
-	// missing-repo phrasing means "not initialized".
-	if strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "Is there a repository") {
+	var ee *exec.ExitError
+	// restic ≥0.17 documents exit 10 for "repository does not exist" — stable, unlike the stderr prose.
+	if errors.As(err, &ee) && ee.ExitCode() == 10 {
 		return false, nil
 	}
 	return false, err
