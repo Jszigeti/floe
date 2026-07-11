@@ -98,7 +98,10 @@ func newInitCmd(d Deps) *cobra.Command {
 // promptScope estimates the backup size and lets the user exclude directories from it.
 func promptScope(cmd *cobra.Command, ask func(prompt, def string) string, cfg *config.Config) error {
 	cmd.Println("→ Estimating backup size (this can take a minute)…")
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
 	total, top, err := scan.Estimate(home, cfg.Scope.Exclude)
 	if err != nil {
 		return err

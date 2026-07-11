@@ -131,6 +131,44 @@ func TestStatusShowsDeferredRetentionWhenQuotaFails(t *testing.T) {
 	}
 }
 
+func TestStatusHidesSyncStateWhenSyncPendingFails(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	cfg, _ := config.Load()
+	cfg.Destination = filepath.Join(os.Getenv("HOME"), "Library/Mobile Documents/com~apple~CloudDocs")
+	cfg.Save()
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case strings.Contains(joined, "snapshots --json"):
+			return `[{"time":"2026-07-10T13:00:00Z","short_id":"abc123","paths":["/Users/x"]}]`, nil
+		case strings.Contains(joined, "stats"):
+			return `{"total_size":8200000000}`, nil
+		case c.Name == "security":
+			return "pw\n", nil
+		case c.Name == "brctl" && c.Args[0] == "quota":
+			return "54022418096 bytes of quota remaining in personal account\n", nil
+		case c.Name == "brctl" && c.Args[0] == "status":
+			return "", errors.New("brctl status unavailable")
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "50.3 GiB quota remaining") {
+		t.Fatalf("status output missing quota line:\n%s", s)
+	}
+	if strings.Contains(s, "sync in progress") || strings.Contains(s, "deferred") {
+		t.Fatalf("status must claim nothing about sync state when it cannot be determined:\n%s", s)
+	}
+}
+
 func TestStatusShowsICloudQuotaAndSync(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)

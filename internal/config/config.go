@@ -172,8 +172,11 @@ func (c Config) Save() error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return toml.NewEncoder(f).Encode(c)
+	if err := toml.NewEncoder(f).Encode(c); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func (c Config) RepoPath() (string, error) {

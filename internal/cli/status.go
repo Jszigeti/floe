@@ -40,15 +40,16 @@ func newStatusCmd(d Deps) *cobra.Command {
 			cmd.Printf("Schedule:    %s\n", schedule)
 			if icloud.IsICloudPath(cfg.Destination) {
 				rem, quotaErr := icloud.QuotaRemaining(ctx, d.Runner)
-				pending, _ := icloud.SyncPending(ctx, d.Runner)
+				// Unknown sync state: claim nothing rather than "no sync in progress".
+				pending, syncErr := icloud.SyncPending(ctx, d.Runner)
 				if quotaErr == nil {
 					cmd.Printf("iCloud:      %.1f GiB quota remaining", float64(rem)/float64(1<<30))
-					if pending {
+					if syncErr == nil && pending {
 						cmd.Print(" — sync in progress")
 					}
 					cmd.Println()
 				}
-				if pending {
+				if syncErr == nil && pending {
 					cmd.Println("Retention:   deferred — prune is skipped until iCloud finishes syncing")
 				}
 			}
