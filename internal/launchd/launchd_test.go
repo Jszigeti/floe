@@ -2,8 +2,10 @@ package launchd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,6 +28,106 @@ func TestPlistContainsScheduleAndBinary(t *testing.T) {
 		if !strings.Contains(p, want) {
 			t.Fatalf("plist missing %q:\n%s", want, p)
 		}
+	}
+}
+
+func TestPlistPathHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := PlistPath(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestLogPathHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := LogPath(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestPlistHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := Plist("/bin/floe", 13); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestInstallHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if err := Install(context.Background(), &run.Fake{}, "/bin/floe", 13); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestInstallWriteFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Block Library/LaunchAgents with a regular file so MkdirAll fails.
+	if err := os.MkdirAll(filepath.Join(home, "Library"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "Library/LaunchAgents"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(context.Background(), &run.Fake{}, "/bin/floe", 13); err == nil {
+		t.Fatal("want error when the plist directory cannot be created")
+	}
+}
+
+func TestInstallWriteFileFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, "Library/LaunchAgents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := Install(context.Background(), &run.Fake{}, "/bin/floe", 13); err == nil {
+		t.Fatal("want error when the plist file cannot be written")
+	}
+}
+
+func TestInstallBootstrapErrorPropagates(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "bootstrap" {
+			return "", errors.New("bootstrap failed")
+		}
+		return "", nil
+	}}
+	if err := Install(context.Background(), f, "/bin/floe", 13); err == nil {
+		t.Fatal("want bootstrap error propagated")
+	}
+}
+
+func TestUninstallHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if err := Uninstall(context.Background(), &run.Fake{}); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestUninstallNonNotExistRemoveError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	pp, err := PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make the plist path a non-empty directory so os.Remove fails with something
+	// other than fs.ErrNotExist.
+	if err := os.MkdirAll(pp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pp, "child"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Uninstall(context.Background(), &run.Fake{}); err == nil {
+		t.Fatal("want error when the plist path cannot be removed")
 	}
 }
 
