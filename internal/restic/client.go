@@ -2,10 +2,17 @@ package restic
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"os/exec"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
+
+// ErrIncomplete indicates restic exited 3: a snapshot was written but some
+// source files could not be read (typically TCC-protected dirs like ~/Library/Mail).
+var ErrIncomplete = errors.New("backup incomplete: some files could not be read")
 
 type Client struct {
 	Bin      string
@@ -47,8 +54,16 @@ func (c *Client) Backup(ctx context.Context, paths, excludes []string) error {
 	}
 	if c.Progress == nil {
 		_, err := c.run(ctx, args...)
-		return err
+		return classifyBackupErr(err)
 	}
 	_, err := c.R.Run(ctx, run.Cmd{Name: c.Bin, Args: args, Env: c.env("RESTIC_PROGRESS_FPS=1"), Stdout: c.Progress})
+	return classifyBackupErr(err)
+}
+
+func classifyBackupErr(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 3 {
+		return fmt.Errorf("%w: %v", ErrIncomplete, err)
+	}
 	return err
 }

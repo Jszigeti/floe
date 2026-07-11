@@ -48,6 +48,35 @@ func TestBackupBuildsArgs(t *testing.T) {
 	}
 }
 
+func TestBackupClassifiesExitCode3(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+
+	incomplete := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, nil)
+	if !errors.Is(err, ErrIncomplete) {
+		t.Fatalf("err = %v, want ErrIncomplete", err)
+	}
+
+	plain := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", errors.New("boom")
+		}
+		return "", nil
+	}}
+	err = newTestClient(plain).Backup(context.Background(), []string{"/Users/x"}, nil)
+	if errors.Is(err, ErrIncomplete) {
+		t.Fatal("plain error must not match ErrIncomplete")
+	}
+}
+
 func TestBackupStreamsProgressWhenSet(t *testing.T) {
 	f := &run.Fake{}
 	c := newTestClient(f)

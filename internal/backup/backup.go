@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -62,8 +63,14 @@ func Run(ctx context.Context, d Deps) error {
 
 	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
 	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes); err != nil {
-		d.Notify("floe backup failed", err.Error())
-		return err
+		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would be crying wolf.
+		if errors.Is(err, restic.ErrIncomplete) {
+			d.Notify("floe: backup incomplete", "Some files could not be read — grant floe Full Disk Access in System Settings → Privacy & Security")
+			d.Log("backup incomplete: %v", err)
+		} else {
+			d.Notify("floe backup failed", err.Error())
+			return err
+		}
 	}
 
 	if err := runHooks(ctx, d, d.Cfg.Hooks.Post, "post-hook"); err != nil {

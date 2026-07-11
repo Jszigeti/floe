@@ -121,6 +121,39 @@ func TestBackupFailureNotifies(t *testing.T) {
 	}
 }
 
+func TestIncompleteBackupWarnsButSucceeds(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	d.Cfg.Hooks.Post = []string{"echo posthook"}
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("incomplete backup must not fail Run: %v", err)
+	}
+	found := false
+	for _, title := range n.titles {
+		if strings.Contains(title, "incomplete") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want an incomplete-backup notification, got %v", n.titles)
+	}
+	if !f.CalledWith("restic", "forget", "--prune") {
+		t.Fatal("want forget to still run")
+	}
+	if !f.CalledWith("sh", "-c", "echo posthook") {
+		t.Fatal("want post-hooks to still run")
+	}
+}
+
 func TestRunDumpsManifest(t *testing.T) {
 	f := &run.Fake{}
 	d, _ := deps(t, f)
