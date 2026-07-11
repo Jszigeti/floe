@@ -62,11 +62,19 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
+	incomplete := false
 	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes); err != nil {
-		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would be crying wolf.
+		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would
+		// be crying wolf, so the notice is weekly.
 		if errors.Is(err, restic.ErrIncomplete) {
-			d.Notify("floe: backup incomplete", "Some files could not be read — grant floe Full Disk Access in System Settings → Privacy & Security")
+			incomplete = true
 			d.Log("backup incomplete: %v", err)
+			if digest.NoticeDue("last_incomplete_notice", d.Now()) {
+				d.Notify("floe: backup incomplete", "Some files could not be read — grant floe Full Disk Access in System Settings → Privacy & Security")
+				if err := digest.MarkNotice("last_incomplete_notice", d.Now()); err != nil {
+					d.Log("incomplete-notice stamp write failed: %v", err)
+				}
+			}
 		} else {
 			d.Notify("floe backup failed", err.Error())
 			return err
@@ -78,11 +86,14 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	if digest.Due(d.Now()) {
-		msg := "Backups healthy"
-		if size, err := d.Client.RepoSize(ctx); err == nil {
+		title, msg := "floe: backups healthy", "Backups healthy"
+		if incomplete {
+			title = "floe: backups running"
+			msg = "Backups running, some files skipped every run — grant Full Disk Access (see floe doctor)"
+		} else if size, err := d.Client.RepoSize(ctx); err == nil {
 			msg = fmt.Sprintf("Backups healthy — repo %.1f GB", float64(size)/1e9)
 		}
-		d.Notify("floe: backups healthy", msg)
+		d.Notify(title, msg)
 		if err := digest.MarkSent(d.Now()); err != nil {
 			d.Log("digest stamp write failed: %v", err)
 		}

@@ -8,16 +8,18 @@ import (
 
 const interval = 7 * 24 * time.Hour
 
-func stampPath() (string, error) {
+func stampPath(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local/state/floe/last_digest"), nil
+	return filepath.Join(home, ".local/state/floe", name), nil
 }
 
-func Due(now time.Time) bool {
-	p, err := stampPath()
+// NoticeDue reports whether the notice named name has not fired within the
+// last 7 days.
+func NoticeDue(name string, now time.Time) bool {
+	p, err := stampPath(name)
 	if err != nil {
 		return false
 	}
@@ -32,8 +34,9 @@ func Due(now time.Time) bool {
 	return now.Sub(last) >= interval
 }
 
-func MarkSent(now time.Time) error {
-	p, err := stampPath()
+// MarkNotice records that the notice named name fired at now.
+func MarkNotice(name string, now time.Time) error {
+	p, err := stampPath(name)
 	if err != nil {
 		return err
 	}
@@ -41,4 +44,12 @@ func MarkSent(now time.Time) error {
 		return err
 	}
 	return os.WriteFile(p, []byte(now.Format(time.RFC3339)), 0o644)
+}
+
+func Due(now time.Time) bool {
+	return NoticeDue("last_digest", now)
+}
+
+func MarkSent(now time.Time) error {
+	return MarkNotice("last_digest", now)
 }

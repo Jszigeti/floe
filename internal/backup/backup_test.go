@@ -154,6 +154,66 @@ func TestIncompleteBackupWarnsButSucceeds(t *testing.T) {
 	}
 }
 
+func TestIncompleteNoticeThrottledWeekly(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	now := time.Now()
+	d.Now = func() time.Time { return now }
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for _, title := range n.titles {
+		if strings.Contains(title, "incomplete") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want exactly one incomplete notification across both runs, got %d: %v", count, n.titles)
+	}
+}
+
+func TestDigestHonestWhenIncomplete(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for i, title := range n.titles {
+		if strings.Contains(title, "running") {
+			found = true
+			if strings.Contains(n.msgs[i], "healthy") {
+				t.Fatalf("digest message should not claim healthy, got %q", n.msgs[i])
+			}
+		}
+		if strings.Contains(title, "healthy") {
+			t.Fatalf("digest title should not claim healthy when backup is incomplete, got %v", n.titles)
+		}
+	}
+	if !found {
+		t.Fatalf("want a digest notification titled with 'running', got %v", n.titles)
+	}
+}
+
 func TestRunDumpsManifest(t *testing.T) {
 	f := &run.Fake{}
 	d, _ := deps(t, f)
