@@ -16,7 +16,7 @@ func newTestClient(f *run.Fake) *Client {
 
 func TestClientInjectsRepoAndPasswordEnv(t *testing.T) {
 	f := &run.Fake{}
-	newTestClient(f).Init(context.Background())
+	_ = newTestClient(f).Init(context.Background())
 	env := f.Calls[0].Env
 	if !slices.Contains(env, "RESTIC_REPOSITORY=/repo") || !slices.Contains(env, "RESTIC_PASSWORD=pw") {
 		t.Fatalf("env = %v", env)

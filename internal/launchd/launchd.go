@@ -70,7 +70,7 @@ func Install(ctx context.Context, r run.Runner, execPath string, hour int) error
 		return err
 	}
 	// bootout fails when not loaded yet — expected, ignored.
-	r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootout", guiDomain(), pp}})
+	_, _ = r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootout", guiDomain(), pp}})
 	_, err = r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootstrap", guiDomain(), pp}})
 	return err
 }
@@ -81,7 +81,7 @@ func Uninstall(ctx context.Context, r run.Runner) error {
 		return err
 	}
 	// bootout fails when not loaded yet — expected, ignored.
-	r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootout", guiDomain(), pp}})
+	_, _ = r.Run(ctx, run.Cmd{Name: "launchctl", Args: []string{"bootout", guiDomain(), pp}})
 	err = os.Remove(pp)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil

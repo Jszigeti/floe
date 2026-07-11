@@ -16,10 +16,14 @@ import (
 
 // errRepoMissing mirrors restic's real missing-repo phrasing so IsInitialized
 // routes to (false, nil) rather than a real execution error.
+//
+//nolint:staticcheck // verbatim restic output, not a Go error string we author
 var errRepoMissing = errors.New("Fatal: unable to open config file: stat config: no such file or directory\nIs there a repository at the following location?")
 
 // errKeychainNotFound mirrors security(1)'s real not-found phrasing so
 // keychain.Get routes to ErrNotFound rather than a generic read failure.
+//
+//nolint:staticcheck // verbatim security(1) output, not a Go error string we author
 var errKeychainNotFound = errors.New("security find-generic-password ...: exit status 44: The specified item could not be found.")
 
 // installFakeRestic writes an executable stand-in restic binary into the
@@ -380,7 +384,7 @@ func TestInitFailsWhenConfigSaveFails(t *testing.T) {
 	if err := os.Chmod(cfgDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(cfgDir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(cfgDir, 0o755) })
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))

@@ -45,7 +45,7 @@ func TestSnapshotsParseError(t *testing.T) {
 
 func TestForgetBuildsRetentionArgs(t *testing.T) {
 	f := &run.Fake{}
-	newTestClient(f).Forget(context.Background(), config.Retention{Daily: 7, Weekly: 4, Monthly: 6})
+	_ = newTestClient(f).Forget(context.Background(), config.Retention{Daily: 7, Weekly: 4, Monthly: 6})
 	if !f.CalledWith("forget", "--prune", "--keep-daily 7", "--keep-weekly 4", "--keep-monthly 6") {
 		t.Fatalf("args = %v", f.Calls[0].Args)
 	}
@@ -53,12 +53,12 @@ func TestForgetBuildsRetentionArgs(t *testing.T) {
 
 func TestRestoreArgs(t *testing.T) {
 	f := &run.Fake{}
-	newTestClient(f).Restore(context.Background(), "bbb222", "/tmp/out", "/Users/x/doc.txt")
+	_ = newTestClient(f).Restore(context.Background(), "bbb222", "/tmp/out", "/Users/x/doc.txt")
 	if !f.CalledWith("restore", "bbb222", "--target /tmp/out", "--include /Users/x/doc.txt") {
 		t.Fatalf("args = %v", f.Calls[0].Args)
 	}
 	f2 := &run.Fake{}
-	newTestClient(f2).Restore(context.Background(), "latest", "/tmp/out", "")
+	_ = newTestClient(f2).Restore(context.Background(), "latest", "/tmp/out", "")
 	if f2.CalledWith("--include") {
 		t.Fatal("must omit --include when empty")
 	}

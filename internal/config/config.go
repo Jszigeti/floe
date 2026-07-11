@@ -173,7 +173,7 @@ func (c Config) Save() error {
 		return err
 	}
 	if err := toml.NewEncoder(f).Encode(c); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

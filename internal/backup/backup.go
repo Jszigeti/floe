@@ -48,7 +48,7 @@ func Run(ctx context.Context, d Deps) error {
 		}
 	}
 
-	d.Client.Unlock(ctx) // removes stale locks only; failure is non-fatal
+	_ = d.Client.Unlock(ctx) // removes stale locks only; failure is non-fatal
 
 	skipPrune := false
 	if onICloud {

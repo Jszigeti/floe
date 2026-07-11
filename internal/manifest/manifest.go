@@ -34,7 +34,7 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) ([]string, er
 	var warnings []string
 	brewfile := filepath.Join(dir, "Brewfile")
 	if _, err := r.Run(ctx, run.Cmd{Name: "brew", Args: []string{"bundle", "dump", "--force", "--file", brewfile}}); err != nil {
-		os.Remove(brewfile) // ignore not-exist
+		_ = os.Remove(brewfile) // ignore not-exist
 		warnings = append(warnings, fmt.Sprintf("brew bundle dump failed: %v", err))
 	}
 	if w := dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, "mas.txt")); w != "" {
@@ -55,7 +55,7 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) ([]string, er
 func dumpCommand(ctx context.Context, r run.Runner, name string, args []string, path string) string {
 	out, err := r.Run(ctx, run.Cmd{Name: name, Args: args})
 	if err != nil || out == "" {
-		os.Remove(path) // ignore not-exist
+		_ = os.Remove(path) // ignore not-exist
 		if err != nil {
 			return fmt.Sprintf("%s %s failed: %v", name, strings.Join(args, " "), err)
 		}

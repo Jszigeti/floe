@@ -67,7 +67,7 @@ func TestDumpWarnsOnWriteFailure(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 	f := &run.Fake{Responses: map[string]run.Response{
 		"mas list":   {Out: "App 1\n"},
 		"crontab -l": {Out: "@daily true\n"},

@@ -150,7 +150,7 @@ func TestSaveCreateFails(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	if err := (Config{Destination: "/tmp/x"}).Save(); err == nil {
 		t.Fatal("want error when the config file cannot be created")

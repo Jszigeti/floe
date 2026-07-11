@@ -146,7 +146,7 @@ func TestEnsureBinaryWriteFileFails(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	raw, err := os.ReadFile("testdata/fake_restic.bz2")
 	if err != nil {
@@ -195,7 +195,7 @@ func TestEnsureBinarySkipsWhenPresent(t *testing.T) {
 
 func fixtureHandler(raw []byte) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write(raw)
+		_, _ = w.Write(raw)
 	}
 }
 

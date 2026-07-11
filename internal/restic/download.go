@@ -55,7 +55,7 @@ func EnsureBinary(ctx context.Context, baseURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("downloading restic: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("downloading restic: HTTP %d from %s", resp.StatusCode, url)
 	}

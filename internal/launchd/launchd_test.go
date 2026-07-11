@@ -84,7 +84,7 @@ func TestInstallWriteFileFailure(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	if err := Install(context.Background(), &run.Fake{}, "/bin/floe", 13); err == nil {
 		t.Fatal("want error when the plist file cannot be written")

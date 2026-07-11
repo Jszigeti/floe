@@ -25,7 +25,7 @@ func newBackupCmd(d Deps) *cobra.Command {
 				Cfg:    cfg,
 				Client: client,
 				Runner: d.Runner,
-				Notify: func(title, msg string) { notify.Send(ctx, d.Runner, title, msg) },
+				Notify: func(title, msg string) { _ = notify.Send(ctx, d.Runner, title, msg) },
 				Now:    time.Now,
 				Log:    logf,
 			})

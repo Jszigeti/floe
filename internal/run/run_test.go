@@ -89,8 +89,8 @@ func TestFakeFallsBackToDefault(t *testing.T) {
 func TestCalledWith(t *testing.T) {
 	f := &Fake{}
 	ctx := context.Background()
-	f.Run(ctx, Cmd{Name: "restic", Args: []string{"snapshots", "--json"}})
-	f.Run(ctx, Cmd{Name: "brctl", Args: []string{"status"}})
+	_, _ = f.Run(ctx, Cmd{Name: "restic", Args: []string{"snapshots", "--json"}})
+	_, _ = f.Run(ctx, Cmd{Name: "brctl", Args: []string{"status"}})
 
 	if !f.CalledWith("restic", "snapshots") {
 		t.Fatal("want CalledWith to match a call containing both tokens")
