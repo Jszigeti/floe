@@ -21,9 +21,8 @@ func TestDumpWritesRecipeFiles(t *testing.T) {
 		}
 	}
 	f := &run.Fake{Responses: map[string]run.Response{
-		"mas list":               {Out: "App 1\n"},
-		"code --list-extensions": {Out: "golang.go\n"},
-		"crontab -l":             {Out: "@daily true\n"},
+		"mas list":   {Out: "App 1\n"},
+		"crontab -l": {Out: "@daily true\n"},
 	}}
 
 	if err := Dump(context.Background(), f, dir, appsRoot); err != nil {
@@ -49,7 +48,6 @@ func TestDumpWritesRecipeFiles(t *testing.T) {
 	}
 
 	assertFile(t, filepath.Join(dir, "mas.txt"), "App 1\n")
-	assertFile(t, filepath.Join(dir, "vscode-extensions.txt"), "golang.go\n")
 	assertFile(t, filepath.Join(dir, "crontab.txt"), "@daily true\n")
 
 	raw, err := os.ReadFile(filepath.Join(dir, "applications.txt"))
@@ -72,7 +70,7 @@ func TestDumpToleratesMissingTools(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"mas.txt", "crontab.txt", "vscode-extensions.txt", "Brewfile"} {
+	for _, name := range []string{"mas.txt", "crontab.txt", "Brewfile"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s should not exist when its tool fails, err = %v", name, err)
 		}

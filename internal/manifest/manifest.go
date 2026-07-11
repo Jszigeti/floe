@@ -31,7 +31,6 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) error {
 	}
 	r.Run(ctx, run.Cmd{Name: "brew", Args: []string{"bundle", "dump", "--force", "--file", filepath.Join(dir, "Brewfile")}})
 	dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, "mas.txt"))
-	dumpCommand(ctx, r, "code", []string{"--list-extensions"}, filepath.Join(dir, "vscode-extensions.txt"))
 	dumpCommand(ctx, r, "crontab", []string{"-l"}, filepath.Join(dir, "crontab.txt"))
 	dumpApplications(appsRoot, filepath.Join(dir, "applications.txt"))
 	return nil
