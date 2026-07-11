@@ -32,6 +32,34 @@ func TestDatalessFilesFindsFlaggedFiles(t *testing.T) {
 	}
 }
 
+func TestStatFlagsOfOrdinaryFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "regular")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	flags, err := StatFlags(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flags&sfDatalessTest != 0 {
+		t.Fatalf("flags = %#x, want SF_DATALESS unset for a regular file", flags)
+	}
+}
+
+func TestStatFlagsMissingFile(t *testing.T) {
+	if _, err := StatFlags(filepath.Join(t.TempDir(), "nope")); err == nil {
+		t.Fatal("want error for a nonexistent path")
+	}
+}
+
+func TestMaterializeStopsOnDownloadError(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Err: context.DeadlineExceeded}}
+	fn := func(p string) (uint32, error) { return sfDatalessTest, nil }
+	if err := Materialize(context.Background(), f, fn, []string{"/repo/pack1"}); err == nil {
+		t.Fatal("want error propagated from brctl download")
+	}
+}
+
 func TestMaterializeDownloadsAndPolls(t *testing.T) {
 	f := &run.Fake{}
 	var polls atomic.Int32

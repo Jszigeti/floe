@@ -27,6 +27,13 @@ func TestQuotaRemainingParsesBrctl(t *testing.T) {
 	}
 }
 
+func TestQuotaRemainingRunnerError(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Err: contextErr()}}
+	if _, err := QuotaRemaining(context.Background(), f); err == nil {
+		t.Fatal("want error when brctl fails")
+	}
+}
+
 func TestQuotaRemainingUnexpectedOutput(t *testing.T) {
 	empty := &run.Fake{Responses: map[string]run.Response{
 		"brctl quota": {Out: ""},
@@ -53,6 +60,13 @@ func TestSyncPending(t *testing.T) {
 	clean := &run.Fake{Default: run.Response{Out: "r:8386 ld{synced-all} uv:1"}}
 	if got, _ := SyncPending(context.Background(), clean); got {
 		t.Fatal("want not pending")
+	}
+}
+
+func TestSyncPendingRunnerError(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Err: contextErr()}}
+	if _, err := SyncPending(context.Background(), f); err == nil {
+		t.Fatal("want error when brctl status fails")
 	}
 }
 
