@@ -29,6 +29,89 @@ func TestDoctorAllHealthy(t *testing.T) {
 	}
 }
 
+func TestDoctorWithoutConfigFails(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	cmd := Root(Deps{Version: "t", Runner: f})
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want actionable error without config")
+	}
+}
+
+func TestDoctorFailsWhenResticBinaryMissing(t *testing.T) {
+	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
+	cfg, _ := config.Default()
+	cfg.Destination = filepath.Join(os.Getenv("HOME"), "dest")
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	// No restic binary written.
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("doctor must exit non-zero when the restic binary is missing")
+	}
+	s := out.String()
+	if !strings.Contains(s, "run `floe init`") {
+		t.Fatalf("doctor output missing floe init hint:\n%s", s)
+	}
+	if !strings.Contains(s, "✗") {
+		t.Fatalf("doctor output missing failure marker:\n%s", s)
+	}
+}
+
+func TestDoctorFailsWhenScheduleNotLoaded(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "print" {
+			return "", errors.New("could not find service")
+		}
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("doctor must exit non-zero when the schedule is not loaded")
+	}
+	if !strings.Contains(out.String(), "launchagent not loaded") {
+		t.Fatalf("doctor output missing schedule failure:\n%s", out.String())
+	}
+}
+
+func TestDoctorFailsWhenRepositoryUnreachable(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "cat" {
+			return "", errors.New("repo unreachable")
+		}
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("doctor must exit non-zero when the repository is unreachable")
+	}
+	if !strings.Contains(out.String(), "unreachable or not initialized") {
+		t.Fatalf("doctor output missing repository failure:\n%s", out.String())
+	}
+}
+
 func TestDoctorChecksFullDiskAccess(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f) // Mail dir doesn't exist under an isolated HOME
@@ -144,6 +227,114 @@ func TestDoctorICloudChecksHealthy(t *testing.T) {
 	}
 	if strings.Contains(s, "✗") {
 		t.Fatalf("unexpected failure:\n%s", s)
+	}
+}
+
+func TestDoctorWarnsWhenOptimizeStorageOn(t *testing.T) {
+	f := &run.Fake{}
+	cfg := setupICloudHome(t, f)
+	repo, err := cfg.RepoPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case c.Name == "defaults" && strings.Contains(joined, "optimize-storage"):
+			return "1\n", nil
+		case c.Name == "brctl" && c.Args[0] == "quota":
+			return "999999999999 bytes of quota remaining", nil
+		case c.Name == "brctl" && c.Args[0] == "status":
+			return "", nil
+		case c.Name == "security":
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("optimize-storage warn must not fail doctor: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "may evict repo files") {
+		t.Fatalf("doctor output missing optimize-storage warning:\n%s", out.String())
+	}
+}
+
+func TestDoctorWarnsWhenQuotaUnknown(t *testing.T) {
+	f := &run.Fake{}
+	cfg := setupICloudHome(t, f)
+	repo, err := cfg.RepoPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case c.Name == "defaults" && strings.Contains(joined, "optimize-storage"):
+			return "", errors.New("key missing")
+		case c.Name == "brctl" && c.Args[0] == "quota":
+			return "", errors.New("brctl unavailable")
+		case c.Name == "brctl" && c.Args[0] == "status":
+			return "", nil
+		case c.Name == "security":
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unknown quota must not fail doctor: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "icloud quota") || !strings.Contains(out.String(), "unknown") {
+		t.Fatalf("doctor output missing unknown-quota line:\n%s", out.String())
+	}
+}
+
+func TestDoctorWarnsWhenQuotaLow(t *testing.T) {
+	f := &run.Fake{}
+	cfg := setupICloudHome(t, f)
+	repo, err := cfg.RepoPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case c.Name == "defaults" && strings.Contains(joined, "optimize-storage"):
+			return "", errors.New("key missing")
+		case c.Name == "brctl" && c.Args[0] == "quota":
+			return "1000000 bytes of quota remaining", nil
+		case c.Name == "brctl" && c.Args[0] == "status":
+			return "", nil
+		case c.Name == "security":
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("low quota must not fail doctor: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "GiB remaining") {
+		t.Fatalf("doctor output missing low-quota line:\n%s", out.String())
 	}
 }
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -52,6 +53,49 @@ func TestBackupWithoutInitFails(t *testing.T) {
 	cmd.SetArgs([]string{"backup"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("want actionable error without config")
+	}
+}
+
+func TestBuildClientFailsWhenResticBinaryMissing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg, _ := config.Default()
+	cfg.Destination = filepath.Join(os.Getenv("HOME"), "dest")
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	// No restic binary written — buildClient must report the "floe init" hint.
+	f := &run.Fake{Responses: map[string]run.Response{
+		"security find-generic-password -s floe -a restic -w": {Out: "pw\n"},
+	}}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	cmd.SetArgs([]string{"backup"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "floe init") {
+		t.Fatalf("err = %v, want a hint to run floe init", err)
+	}
+}
+
+func TestBackupCommandLogsFailure(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", errors.New("disk full")
+		}
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"backup"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want error propagated from backup.Run")
+	}
+	if !strings.Contains(out.String(), "backup failed") {
+		t.Fatalf("output missing 'backup failed':\n%s", out.String())
 	}
 }
 

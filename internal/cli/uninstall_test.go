@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -43,5 +44,26 @@ func TestUninstallRemovesSchedule(t *testing.T) {
 	output := out.String()
 	if !strings.Contains(output, "schedule removed") {
 		t.Fatalf("output missing 'schedule removed': %s", output)
+	}
+}
+
+func TestUninstallPropagatesRemoveError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make the plist path a non-empty directory so os.Remove fails.
+	if err := os.MkdirAll(pp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pp, "child"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := Root(Deps{Version: "t", Runner: &run.Fake{}})
+	cmd.SetArgs([]string{"uninstall"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want error when the plist path cannot be removed")
 	}
 }

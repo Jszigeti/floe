@@ -42,6 +42,61 @@ func TestStatusShowsSnapshotsAndSchedule(t *testing.T) {
 	}
 }
 
+func TestStatusWithoutConfigFails(t *testing.T) {
+	f := &run.Fake{}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want actionable error without config")
+	}
+}
+
+func TestStatusPropagatesResticError(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if strings.Contains(strings.Join(c.Args, " "), "snapshots --json") {
+			return "", errors.New("repo unreachable")
+		}
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("want error when restic snapshots fails")
+	}
+}
+
+func TestStatusShowsNotScheduledWhenLaunchagentMissing(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	f.Handler = func(c run.Cmd) (string, error) {
+		joined := strings.Join(c.Args, " ")
+		switch {
+		case strings.Contains(joined, "snapshots --json"):
+			return `[]`, nil
+		case len(c.Args) > 0 && c.Args[0] == "print":
+			return "", errors.New("could not find service")
+		case c.Name == "security":
+			return "pw\n", nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "NOT SCHEDULED") {
+		t.Fatalf("status output missing 'NOT SCHEDULED':\n%s", out.String())
+	}
+}
+
 func TestStatusShowsDeferredRetentionWhenQuotaFails(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
