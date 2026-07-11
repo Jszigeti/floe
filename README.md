@@ -63,7 +63,7 @@ Your home folder, minus the noise. The defaults exclude what a fresh install can
 
 Apps and the system are not copied, they are captured as a recipe instead: every backup writes a small manifest (Homebrew `Brewfile`, App Store apps, the contents of `/Applications`, your crontab) into `~/.local/state/floe/manifest`, inside the snapshot. On a new Mac you restore your files with floe, then replay the manifest to reinstall everything. Same outcome as copying 80 GB of apps, for a few kilobytes.
 
-One macOS quirk to know: Mail, Messages and Safari data are protected by the system. Grant your terminal (and floe) Full Disk Access in System Settings → Privacy & Security if you want them included. Without it the backup still runs and you get a single "backup incomplete" notification instead of a failure. `floe doctor` checks this for you.
+One macOS quirk to know: Mail, Messages and Safari data are protected by the system. Grant your terminal (and floe) Full Disk Access in System Settings → Privacy & Security if you want them included. Without it the backup still runs and you get at most one "backup incomplete" reminder a week instead of a daily failure. `floe doctor` checks this for you.
 
 ## How it works
 
