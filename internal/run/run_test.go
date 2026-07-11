@@ -77,3 +77,31 @@ func TestFakeHandlerTakesPrecedence(t *testing.T) {
 		t.Fatalf("out = %q", out)
 	}
 }
+
+func TestFakeFallsBackToDefault(t *testing.T) {
+	f := &Fake{Default: Response{Out: "default out", Err: errors.New("default err")}}
+	out, err := f.Run(context.Background(), Cmd{Name: "unmapped"})
+	if out != "default out" || err == nil || err.Error() != "default err" {
+		t.Fatalf("got %q, %v", out, err)
+	}
+}
+
+func TestCalledWith(t *testing.T) {
+	f := &Fake{}
+	ctx := context.Background()
+	f.Run(ctx, Cmd{Name: "restic", Args: []string{"snapshots", "--json"}})
+	f.Run(ctx, Cmd{Name: "brctl", Args: []string{"status"}})
+
+	if !f.CalledWith("restic", "snapshots") {
+		t.Fatal("want CalledWith to match a call containing both tokens")
+	}
+	if !f.CalledWith("brctl") {
+		t.Fatal("want CalledWith to match a single-token call")
+	}
+	if f.CalledWith("restic", "nope") {
+		t.Fatal("want CalledWith false when a token is missing from every call")
+	}
+	if f.CalledWith("nonexistent") {
+		t.Fatal("want CalledWith false when no call matches at all")
+	}
+}

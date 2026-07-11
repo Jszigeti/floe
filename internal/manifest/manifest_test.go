@@ -110,6 +110,53 @@ func TestDumpRemovesStaleFileWhenToolFails(t *testing.T) {
 	}
 }
 
+func TestDirJoinsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir, err := Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != filepath.Join(home, ".local/state/floe/manifest") {
+		t.Fatalf("dir = %q", dir)
+	}
+}
+
+func TestDirHomeError(t *testing.T) {
+	t.Setenv("HOME", "")
+	if _, err := Dir(); err == nil {
+		t.Fatal("want error when HOME is unresolvable")
+	}
+}
+
+func TestDumpMkdirAllFails(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	parent := t.TempDir()
+	blocker := filepath.Join(parent, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(blocker, "manifest") // blocker is a file, not a dir
+	f := &run.Fake{}
+
+	if _, err := Dump(context.Background(), f, dir, t.TempDir()); err == nil {
+		t.Fatal("want error when the manifest dir cannot be created")
+	}
+}
+
+func TestDumpApplicationsSkipsMissingRoot(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	f := &run.Fake{}
+
+	if _, err := Dump(context.Background(), f, dir, filepath.Join(dir, "no-such-apps-root")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "applications.txt")); !os.IsNotExist(err) {
+		t.Fatalf("want no applications.txt when appsRoot cannot be read, err = %v", err)
+	}
+}
+
 func assertFile(t *testing.T, path, want string) {
 	t.Helper()
 	raw, err := os.ReadFile(path)
