@@ -72,6 +72,7 @@ One macOS quirk to know: Mail, Messages and Safari data are protected by the sys
 - The passphrase is generated at setup and lives in the macOS Keychain (service `floe`, account `restic`).
 - Failures and low quota notify you immediately. Success is a weekly digest, never a daily ping.
 - The engine is [restic](https://github.com/restic/restic): AES-256 encryption, content-defined deduplication and zstd compression. Unchanged files are never uploaded twice, and identical data across days is stored once.
+- Trust is tested, not claimed: every commit runs an end-to-end suite that drives the real binary through init, backup, restore and doctor against a real restic, plus unit tests behind a 90% coverage floor and golangci-lint. The full wizard-to-restore cycle you saw in the demo above runs in CI.
 
 ## The iCloud problem
 
