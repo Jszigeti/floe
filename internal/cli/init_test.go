@@ -22,14 +22,27 @@ var errRepoMissing = errors.New("Fatal: unable to open config file: stat config:
 // keychain.Get routes to ErrNotFound rather than a generic read failure.
 var errKeychainNotFound = errors.New("security find-generic-password ...: exit status 44: The specified item could not be found.")
 
+// installFakeRestic writes an executable stand-in restic binary into the
+// isolated HOME so EnsureBinary skips the network fetch.
+func installFakeRestic(t *testing.T) {
+	t.Helper()
+	bin, err := restic.BinPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("fake"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInitWizardEndToEnd(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	// pre-install fake restic so EnsureBinary skips the network
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	// keychain lookup fails → wizard must generate and store a new passphrase
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
@@ -94,9 +107,7 @@ func TestInitFailsWhenHomeUnresolvable(t *testing.T) {
 func TestInitRejectsRelativeDestination(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -119,9 +130,7 @@ func TestInitReusesExistingPassphrase(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	// keychain lookup succeeds → wizard must reuse it, not generate a new one.
 	f.Responses = map[string]run.Response{
 		"security find-generic-password -s floe -a restic -w": {Out: "existing-pass\n"},
@@ -149,9 +158,7 @@ func TestInitAbortsWhenKeychainSetFails(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -176,9 +183,7 @@ func TestInitPromptScopeExcludesValidPickIgnoresJunk(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -216,9 +221,7 @@ func TestInitFailsWhenLaunchdInstallFails(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -248,9 +251,7 @@ func TestInitFailsWhenFirstBackupFails(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -278,9 +279,7 @@ func TestInitFailsWhenRepoDirCannotBeCreated(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -309,9 +308,7 @@ func TestInitWrapsResticInitFailure(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -340,9 +337,7 @@ func TestInitFailsWhenConfigSaveFails(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -376,9 +371,7 @@ func TestInitLogsManifestWarningDuringFirstBackup(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -411,9 +404,7 @@ func TestInitExpandsTildeDestination(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -445,9 +436,7 @@ func TestInitRejectsMissingDestination(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {
 			return "", errKeychainNotFound
@@ -480,9 +469,7 @@ func TestInitAbortsOnAmbiguousKeychainError(t *testing.T) {
 	f := &run.Fake{}
 	t.Setenv("HOME", t.TempDir())
 	home := os.Getenv("HOME")
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	// keychain lookup fails ambiguously (e.g. locked keychain) → wizard must abort, not overwrite
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "security" && c.Args[0] == "find-generic-password" {

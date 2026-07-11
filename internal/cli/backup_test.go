@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
-	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 )
 
@@ -25,9 +24,7 @@ func setupHome(t *testing.T, f *run.Fake) {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	bin, _ := restic.BinPath()
-	os.MkdirAll(filepath.Dir(bin), 0o755)
-	os.WriteFile(bin, []byte("fake"), 0o755)
+	installFakeRestic(t)
 	if f.Responses == nil {
 		f.Responses = map[string]run.Response{}
 	}
