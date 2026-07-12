@@ -9,7 +9,8 @@ macOS CLI in Go that gives Time Machine-style backups (daily snapshots, full his
 - ✅ Design spec: `docs/superpowers/specs/2026-07-10-floe-design.md` (historical — some decisions evolved, see below)
 - ✅ Implementation plan: `docs/superpowers/plans/2026-07-10-floe-v0.1.md` (historical)
 - ✅ Fully implemented and audited: all commands (`init`, `backup`, `status`, `snapshots`, `restore`, `doctor`, `passphrase`, `uninstall`), 96%+ unit coverage, integration + e2e suites against real restic, golangci-lint clean
-- ⬜ GitHub repo not created yet (target: `Jszigeti/floe`, public, MIT); tag `v0.1.0` triggers goreleaser
+- ✅ Published: [github.com/Jszigeti/floe](https://github.com/Jszigeti/floe) (public, MIT), `v0.1.0` released 2026-07-12, deployed on Jonas's Mac the same day
+- Backlog: GitHub Issues (milestone `v0.1.1`) · History: `CHANGELOG.md`
 
 ## Deviations from the original spec (deliberate, reviewed)
 
