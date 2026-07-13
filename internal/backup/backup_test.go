@@ -161,6 +161,70 @@ func TestIncompleteBackupWarnsButSucceeds(t *testing.T) {
 	}
 }
 
+func TestIncompleteBackupSummarizesAndLogsFullList(t *testing.T) {
+	// Same "err"+"or:" split as restic's client_test.go: keeps the script
+	// source (embedded verbatim in ExecRunner's error via argv) from itself
+	// matching restic.unreadablePathRe.
+	script := `
+printf 'err''or: open /Users/x/Library/Mail/1: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/2: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/3: operation not permitted\n' >&2
+printf 'err''or: openfile for readdirnames failed: open /Users/x/Library/Mail/4: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/5: operation not permitted\n' >&2
+exit 3
+`
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", script}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	var logs []string
+	d.Log = func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	joined := strings.Join(logs, "\n")
+	if !strings.Contains(joined, "5 files") {
+		t.Fatalf("log missing file count, got %v", logs)
+	}
+	for i := 1; i <= 3; i++ {
+		want := fmt.Sprintf("/Users/x/Library/Mail/%d", i)
+		if !strings.Contains(joined, want) {
+			t.Fatalf("log missing example %q, got %v", want, logs)
+		}
+	}
+	if strings.Contains(joined, "--exclude") {
+		t.Fatalf("log leaked the full restic argv, got %v", logs)
+	}
+	if strings.Contains(joined, "incomplete: backup incomplete") {
+		t.Fatalf("log has the doubled sentinel prefix, got %v", logs)
+	}
+	if !strings.Contains(joined, "last_incomplete.log") {
+		t.Fatalf("log missing state-file pointer, got %v", logs)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".local/state/floe/last_incomplete.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("state file lines = %v, want 5", lines)
+	}
+}
+
 func TestIncompleteNoticeThrottledWeekly(t *testing.T) {
 	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {

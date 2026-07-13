@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
@@ -15,6 +18,53 @@ import (
 )
 
 const lowQuotaBytes = 5 << 30
+
+const maxIncompleteExamples = 3
+
+// incompleteLogPath returns $HOME/.local/state/floe/last_incomplete.log,
+// where logIncomplete writes the full unreadable-path list every run.
+func incompleteLogPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local/state/floe/last_incomplete.log"), nil
+}
+
+func writeIncompleteLog(paths []string) error {
+	p, err := incompleteLogPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(p, []byte(strings.Join(paths, "\n")), 0o644)
+}
+
+// logIncomplete summarizes a restic.IncompleteError into one short log line
+// instead of the raw error (which embeds the full restic argv and can carry
+// hundreds of TCC-denial lines from restic's stderr), and writes the full
+// unreadable-path list to state for later inspection.
+func logIncomplete(d Deps, err error) {
+	var ie *restic.IncompleteError
+	if !errors.As(err, &ie) {
+		d.Log("backup incomplete: %v", err)
+		return
+	}
+	if werr := writeIncompleteLog(ie.Unreadable); werr != nil {
+		d.Log("incomplete-log write failed: %v", werr)
+	}
+	examples := ie.Unreadable
+	if len(examples) > maxIncompleteExamples {
+		examples = examples[:maxIncompleteExamples]
+	}
+	msg := fmt.Sprintf("backup incomplete: %d files could not be read (grant Full Disk Access — see floe doctor)", len(ie.Unreadable))
+	if len(examples) > 0 {
+		msg += fmt.Sprintf("; examples: %s", strings.Join(examples, ", "))
+	}
+	d.Log("%s; full list: ~/.local/state/floe/last_incomplete.log", msg)
+}
 
 type Deps struct {
 	Cfg    config.Config
@@ -72,7 +122,7 @@ func Run(ctx context.Context, d Deps) error {
 		// be crying wolf, so the notice is weekly.
 		if errors.Is(err, restic.ErrIncomplete) {
 			incomplete = true
-			d.Log("backup incomplete: %v", err)
+			logIncomplete(d, err)
 			if digest.NoticeDue("last_incomplete_notice", d.Now()) {
 				d.Notify("floe: backup incomplete", "Some files could not be read — grant floe Full Disk Access in System Settings → Privacy & Security")
 				if err := digest.MarkNotice("last_incomplete_notice", d.Now()); err != nil {
