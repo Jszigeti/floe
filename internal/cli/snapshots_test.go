@@ -92,6 +92,7 @@ func TestSnapshotsEmptyList(t *testing.T) {
 
 func TestRestoreWithoutConfigFails(t *testing.T) {
 	f := &run.Fake{}
+	t.Setenv("HOME", t.TempDir())
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetArgs([]string{"restore", "latest"})
 	if err := cmd.Execute(); err == nil {
