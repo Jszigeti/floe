@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -13,6 +14,34 @@ import (
 // ErrIncomplete indicates restic exited 3: a snapshot was written but some
 // source files could not be read (typically TCC-protected dirs like ~/Library/Mail).
 var ErrIncomplete = errors.New("backup incomplete: some files could not be read")
+
+// maxUnreadablePaths bounds how many paths IncompleteError keeps, so a
+// pathological run (thousands of TCC-denied files) never balloons memory.
+const maxUnreadablePaths = 1000
+
+// unreadablePathRe matches restic's two exit-3 stderr shapes:
+// "error: open <path>: ..." and "error: openfile for readdirnames failed: open <path>: ...".
+// No line-start anchor: ExecRunner folds stderr into a single error string, so
+// the first occurrence isn't preceded by a newline.
+var unreadablePathRe = regexp.MustCompile(`error: (?:openfile for readdirnames failed: )?open (.+?):`)
+
+// IncompleteError carries the individual files restic could not read on an
+// exit-3 (incomplete) backup, so callers can summarize instead of dumping
+// restic's raw stderr (which embeds the full argv and can run to hundreds of lines).
+type IncompleteError struct {
+	Unreadable []string
+	Err        error
+}
+
+func (e *IncompleteError) Error() string {
+	return fmt.Sprintf("backup incomplete: %d files could not be read", len(e.Unreadable))
+}
+
+// Unwrap returns the ErrIncomplete sentinel (not Err) so callers keep using
+// errors.Is(err, ErrIncomplete) without depending on this type.
+func (e *IncompleteError) Unwrap() error {
+	return ErrIncomplete
+}
 
 type Client struct {
 	Bin      string
@@ -71,7 +100,16 @@ func (c *Client) Backup(ctx context.Context, paths, excludes []string) error {
 func classifyBackupErr(err error) error {
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 3 {
-		return fmt.Errorf("%w: %v", ErrIncomplete, err)
+		return &IncompleteError{Unreadable: parseUnreadablePaths(err.Error()), Err: err}
 	}
 	return err
+}
+
+func parseUnreadablePaths(msg string) []string {
+	matches := unreadablePathRe.FindAllStringSubmatch(msg, maxUnreadablePaths)
+	paths := make([]string, len(matches))
+	for i, m := range matches {
+		paths[i] = m[1]
+	}
+	return paths
 }

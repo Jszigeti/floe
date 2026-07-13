@@ -90,6 +90,54 @@ func TestBackupClassifiesExitCode3(t *testing.T) {
 	}
 }
 
+func TestBackupCollectsUnreadablePaths(t *testing.T) {
+	// The "err"+"or:" split keeps the literal script source (which ExecRunner's
+	// error also embeds via argv) from matching unreadablePathRe itself — only
+	// the actual stderr produced by running the script (shell concatenates the
+	// adjacent quotes back into "error: ") should match.
+	script := `
+printf 'err''or: open /Users/x/Library/Mail/1: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/2: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/3: operation not permitted\n' >&2
+printf 'err''or: openfile for readdirnames failed: open /Users/x/Library/Mail/4: operation not permitted\n' >&2
+printf 'err''or: open /Users/x/Library/Mail/5: operation not permitted\n' >&2
+exit 3
+`
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", script}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+
+	incomplete := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, nil)
+
+	var ie *IncompleteError
+	if !errors.As(err, &ie) {
+		t.Fatalf("err = %v, want *IncompleteError", err)
+	}
+	want := []string{
+		"/Users/x/Library/Mail/1",
+		"/Users/x/Library/Mail/2",
+		"/Users/x/Library/Mail/3",
+		"/Users/x/Library/Mail/4",
+		"/Users/x/Library/Mail/5",
+	}
+	if !slices.Equal(ie.Unreadable, want) {
+		t.Fatalf("Unreadable = %v, want %v", ie.Unreadable, want)
+	}
+	if !errors.Is(err, ErrIncomplete) {
+		t.Fatal("want errors.Is(err, ErrIncomplete) true")
+	}
+	if got := ie.Error(); got != "backup incomplete: 5 files could not be read" {
+		t.Fatalf("Error() = %q", got)
+	}
+}
+
 func TestBackupStreamsProgressWhenSet(t *testing.T) {
 	f := &run.Fake{}
 	c := newTestClient(f)
