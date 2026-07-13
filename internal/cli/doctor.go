@@ -16,11 +16,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// hostAppHint names the app that needs Full Disk Access granted alongside the
+// floe binary — the terminal or editor running the shell floe was launched
+// from, identified via TERM_PROGRAM (set by Terminal.app, iTerm2, and
+// VS Code/Cursor's integrated terminal).
+func hostAppHint() string {
+	switch os.Getenv("TERM_PROGRAM") {
+	case "Apple_Terminal":
+		return "Terminal"
+	case "iTerm.app":
+		return "iTerm"
+	case "vscode":
+		return "your editor's app (VS Code or Cursor)"
+	default:
+		return "your terminal app"
+	}
+}
+
 // interpretFDAProbe classifies the result of reading a TCC-protected directory
 // into a doctor check's (ok, warn, msg) tuple.
 func interpretFDAProbe(err error) (bool, bool, string) {
 	if errors.Is(err, fs.ErrPermission) {
-		return true, true, "denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access to your terminal and to floe in System Settings → Privacy & Security"
+		return true, true, fmt.Sprintf("denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access to %s and to the floe binary in System Settings → Privacy & Security", hostAppHint())
 	}
 	return true, false, "ok"
 }

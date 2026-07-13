@@ -158,6 +158,26 @@ func TestDoctorChecksFullDiskAccess(t *testing.T) {
 	}
 }
 
+func TestHostAppHint(t *testing.T) {
+	cases := []struct {
+		name, termProgram, want string
+	}{
+		{"apple terminal", "Apple_Terminal", "Terminal"},
+		{"iterm", "iTerm.app", "iTerm"},
+		{"vscode", "vscode", "your editor's app (VS Code or Cursor)"},
+		{"unknown", "SomeOtherApp", "your terminal app"},
+		{"empty", "", "your terminal app"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("TERM_PROGRAM", c.termProgram)
+			if got := hostAppHint(); got != c.want {
+				t.Fatalf("hostAppHint() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestInterpretFDAProbe(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -174,6 +194,9 @@ func TestInterpretFDAProbe(t *testing.T) {
 			ok, warn, msg := interpretFDAProbe(c.err)
 			if ok != c.wantOk || warn != c.warn {
 				t.Fatalf("interpretFDAProbe(%v) = (%v, %v, %q), want ok=%v warn=%v", c.err, ok, warn, msg, c.wantOk, c.warn)
+			}
+			if c.name == "permission" && !strings.Contains(msg, "Full Disk Access to "+hostAppHint()) {
+				t.Fatalf("interpretFDAProbe permission msg = %q, want it to name the host app", msg)
 			}
 		})
 	}
