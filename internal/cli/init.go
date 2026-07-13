@@ -94,6 +94,7 @@ func newInitCmd(d Deps) *cobra.Command {
 				return err
 			}
 			cmd.Printf("✓ floe is set up. Daily backups at %s — check anytime with `floe status`.\n", formatHour(cfgSaved.Hour))
+			cmd.Println("Passphrase: stored in the macOS Keychain — run `floe passphrase` if you missed it above.")
 			return nil
 		},
 	}

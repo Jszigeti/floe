@@ -103,6 +103,9 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	if !strings.Contains(out.String(), "1:00 PM") {
 		t.Fatalf("hour not formatted as 12-hour in output:\n%s", out.String())
 	}
+	if !strings.Contains(out.String(), "stored in the macOS Keychain") {
+		t.Fatalf("passphrase reminder not shown at end of init:\n%s", out.String())
+	}
 }
 
 func TestInitFailsWhenHomeUnresolvable(t *testing.T) {
