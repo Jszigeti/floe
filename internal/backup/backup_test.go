@@ -495,3 +495,59 @@ func TestQuotaLowNotifies(t *testing.T) {
 		t.Fatalf("want quota notification, got %v", n.titles)
 	}
 }
+
+func TestIncompleteBackupWithUnparsedDetailFallsBack(t *testing.T) {
+	// An authentic exit-3 error whose message contains only "incomplete metadata for /x: boom"
+	// (does not match our unreadablePathRe regex).
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "printf 'incomplete metadata for /Users/x/Library/Mail: boom' >&2; exit 3"}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	var logs []string
+	d.Log = func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
+
+	// Pre-write last_incomplete.log with content
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(home, ".local/state/floe/last_incomplete.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	originalContent := "original path line 1\noriginal path line 2\n"
+	if err := os.WriteFile(logPath, []byte(originalContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	joined := strings.Join(logs, "\n")
+	// Assert log contains the unparsed error detail
+	if !strings.Contains(joined, "incomplete metadata for /Users/x/Library/Mail") {
+		t.Fatalf("log missing unparsed detail, got %v", logs)
+	}
+	// Assert log does not contain "0 files"
+	if strings.Contains(joined, "0 files") {
+		t.Fatalf("log should not mention 0 files, got %v", logs)
+	}
+
+	// Assert last_incomplete.log was not overwritten
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != originalContent {
+		t.Fatalf("last_incomplete.log was overwritten, want %q got %q", originalContent, string(data))
+	}
+}

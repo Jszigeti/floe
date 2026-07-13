@@ -48,10 +48,15 @@ func writeIncompleteLog(paths []string) error {
 // unreadable-path list to state for later inspection.
 func logIncomplete(d Deps, err error) {
 	var ie *restic.IncompleteError
-	if !errors.As(err, &ie) {
-		d.Log("backup incomplete: %v", err)
+	errors.As(err, &ie) // guaranteed by caller (errors.Is check), but extract for clarity
+
+	// Fall back to raw detail when the unreadable paths list is empty (regex did not match).
+	if len(ie.Unreadable) == 0 {
+		d.Log("backup incomplete: some files could not be read (grant Full Disk Access — see floe doctor); detail: %s", ie.RawDetail)
 		return
 	}
+
+	// Lives inside the backup scope on purpose: the last failure report travels with the snapshots.
 	if werr := writeIncompleteLog(ie.Unreadable); werr != nil {
 		d.Log("incomplete-log write failed: %v", werr)
 	}
@@ -60,9 +65,7 @@ func logIncomplete(d Deps, err error) {
 		examples = examples[:maxIncompleteExamples]
 	}
 	msg := fmt.Sprintf("backup incomplete: %d files could not be read (grant Full Disk Access — see floe doctor)", len(ie.Unreadable))
-	if len(examples) > 0 {
-		msg += fmt.Sprintf("; examples: %s", strings.Join(examples, ", "))
-	}
+	msg += fmt.Sprintf("; examples: %s", strings.Join(examples, ", "))
 	d.Log("%s; full list: ~/.local/state/floe/last_incomplete.log", msg)
 }
 

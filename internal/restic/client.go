@@ -30,7 +30,7 @@ var unreadablePathRe = regexp.MustCompile(`error: (?:openfile for readdirnames f
 // restic's raw stderr (which embeds the full argv and can run to hundreds of lines).
 type IncompleteError struct {
 	Unreadable []string
-	Err        error
+	RawDetail  string
 }
 
 func (e *IncompleteError) Error() string {
@@ -100,7 +100,7 @@ func (c *Client) Backup(ctx context.Context, paths, excludes []string) error {
 func classifyBackupErr(err error) error {
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 3 {
-		return &IncompleteError{Unreadable: parseUnreadablePaths(err.Error()), Err: err}
+		return &IncompleteError{Unreadable: parseUnreadablePaths(err.Error()), RawDetail: err.Error()}
 	}
 	return err
 }
