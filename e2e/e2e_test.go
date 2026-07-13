@@ -214,6 +214,7 @@ func TestE2E(t *testing.T) {
 		mustContain(t, out, "password manager")
 		mustContain(t, out, "1:00 PM")
 		mustContain(t, out, "Running first backup")
+		mustContain(t, out, "stored in the macOS Keychain")
 		// Restic's own progress wording is version-dependent — snapshot existence is asserted via floe snapshots in the next subtest.
 
 		info, err := os.Stat(store)
