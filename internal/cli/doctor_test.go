@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/config"
+	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/run"
 )
 
@@ -88,6 +89,68 @@ func TestDoctorFailsWhenScheduleNotLoaded(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "launchagent not loaded") {
 		t.Fatalf("doctor output missing schedule failure:\n%s", out.String())
+	}
+}
+
+func TestDoctorWarnsWhenScheduleMissingMarker(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pp, []byte("<plist></plist>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("a schedule predating this version must not fail doctor: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "schedule predates this version") {
+		t.Fatalf("doctor output missing predates-version warning:\n%s", s)
+	}
+	if !strings.Contains(s, "! schedule") {
+		t.Fatalf("doctor output missing warn marker on schedule check:\n%s", s)
+	}
+}
+
+func TestDoctorOkWhenScheduleHasMarker(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content, err := launchd.Plist("/usr/local/bin/floe", 13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pp, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("healthy doctor must exit 0: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if strings.Contains(s, "predates this version") {
+		t.Fatalf("doctor output should not warn when the plist has the marker:\n%s", s)
+	}
+	if !strings.Contains(s, "daily at") {
+		t.Fatalf("doctor output missing plain schedule OK line:\n%s", s)
 	}
 }
 

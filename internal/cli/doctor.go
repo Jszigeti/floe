@@ -104,6 +104,16 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					if !launchd.IsLoaded(ctx, d.Runner) {
 						return false, false, "launchagent not loaded — run `floe init`"
 					}
+					// An upgraded plist predating FLOE_SCHEDULED would silently stop
+					// reporting incomplete scheduled runs — surface that instead of
+					// claiming "complete" forever.
+					if pp, err := launchd.PlistPath(); err == nil {
+						if content, err := os.ReadFile(pp); err == nil && !strings.Contains(string(content), "FLOE_SCHEDULED") {
+							return true, true, fmt.Sprintf(
+								"daily at %s — schedule predates this version, re-run `floe init` so incomplete runs get reported",
+								formatHour(cfg.Hour))
+						}
+					}
 					return true, false, "daily at " + formatHour(cfg.Hour)
 				}},
 				{"repository", func(ctx context.Context) (bool, bool, string) {
