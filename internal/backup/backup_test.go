@@ -473,6 +473,27 @@ func TestDigestStampAndIncompleteNoticeWriteFailuresAreLogged(t *testing.T) {
 	}
 }
 
+func TestCompleteBackupClearsIncompleteLog(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	logPath, err := incompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("stale path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("want incomplete log removed after a complete run, stat err = %v", err)
+	}
+}
+
 func TestQuotaLowNotifies(t *testing.T) {
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		if c.Name == "brctl" && c.Args[0] == "quota" {

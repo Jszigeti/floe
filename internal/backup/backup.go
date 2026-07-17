@@ -42,6 +42,18 @@ func writeIncompleteLog(paths []string) error {
 	return os.WriteFile(p, []byte(strings.Join(paths, "\n")), 0o644)
 }
 
+// clearIncompleteLog removes the previous run's incomplete-backup report.
+// A complete run invalidates the previous failure report.
+func clearIncompleteLog(d Deps) {
+	p, err := incompleteLogPath()
+	if err != nil {
+		return
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		d.Log("incomplete-log removal failed: %v", err)
+	}
+}
+
 // logIncomplete summarizes a restic.IncompleteError into one short log line
 // instead of the raw error (which embeds the full restic argv and can carry
 // hundreds of TCC-denial lines from restic's stderr), and writes the full
@@ -136,6 +148,8 @@ func Run(ctx context.Context, d Deps) error {
 			d.Notify("floe backup failed", err.Error())
 			return err
 		}
+	} else {
+		clearIncompleteLog(d)
 	}
 
 	if err := runHooks(ctx, d, d.Cfg.Hooks.Post, "post-hook"); err != nil {
