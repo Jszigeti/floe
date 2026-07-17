@@ -6,7 +6,7 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 ### Fixed
 
-- A correctly configured machine reported every backup as incomplete because three paths under `~/Library` are unreadable whatever permission is granted (an iCloud FileProvider tombstone, a speech-model cache and a preferences file macOS protects by design). They are excluded by default now, so runs report complete and the Full Disk Access warning goes back to meaning something (#8).
+- A correctly configured machine reported every backup as incomplete because three paths under `~/Library` are unreadable whatever permission is granted: a FileProvider staging area, a speech-model cache, and a Control Center secure preferences directory. The fix is scoped to exactly what is unreadable, so everything readable around them stays in the backup, runs report complete, and the Full Disk Access warning goes back to meaning something (#8).
 
 ## [0.1.2] - 2026-07-17
 
