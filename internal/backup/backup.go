@@ -21,9 +21,9 @@ const lowQuotaBytes = 5 << 30
 
 const maxIncompleteExamples = 3
 
-// incompleteLogPath returns $HOME/.local/state/floe/last_incomplete.log,
+// IncompleteLogPath returns $HOME/.local/state/floe/last_incomplete.log,
 // where logIncomplete writes the full unreadable-path list every run.
-func incompleteLogPath() (string, error) {
+func IncompleteLogPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -32,7 +32,7 @@ func incompleteLogPath() (string, error) {
 }
 
 func writeIncompleteLog(paths []string) error {
-	p, err := incompleteLogPath()
+	p, err := IncompleteLogPath()
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func writeIncompleteLog(paths []string) error {
 // clearIncompleteLog removes the previous run's incomplete-backup report.
 // A complete run invalidates the previous failure report.
 func clearIncompleteLog(d Deps) {
-	p, err := incompleteLogPath()
+	p, err := IncompleteLogPath()
 	if err != nil {
 		return
 	}

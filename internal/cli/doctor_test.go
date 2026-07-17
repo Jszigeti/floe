@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Jszigeti/floe/internal/backup"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/run"
@@ -236,7 +237,10 @@ func TestLastIncompleteReport(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
 			if c.content != "" {
-				p := filepath.Join(os.Getenv("HOME"), ".local/state/floe/last_incomplete.log")
+				p, err := backup.IncompleteLogPath()
+				if err != nil {
+					t.Fatal(err)
+				}
 				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -283,7 +287,10 @@ func TestDoctorReportsCompleteWhenNoIncompleteLog(t *testing.T) {
 func TestDoctorWarnsWhenLastScheduledBackupSkippedFiles(t *testing.T) {
 	f := &run.Fake{}
 	setupHome(t, f)
-	logPath := filepath.Join(os.Getenv("HOME"), ".local/state/floe/last_incomplete.log")
+	logPath, err := backup.IncompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 		t.Fatal(err)
 	}

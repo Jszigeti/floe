@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jszigeti/floe/internal/backup"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/icloud"
 	"github.com/Jszigeti/floe/internal/keychain"
@@ -48,11 +49,10 @@ func interpretFDAProbe(err error) (bool, bool, string) {
 // backup writes when Full Disk Access blocks it from reading protected
 // files, and returns how many paths it lists and when it was written.
 func lastIncompleteReport() (count int, when time.Time, err error) {
-	home, err := os.UserHomeDir()
+	p, err := backup.IncompleteLogPath()
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	p := filepath.Join(home, ".local/state/floe/last_incomplete.log")
 	info, err := os.Stat(p)
 	if err != nil {
 		return 0, time.Time{}, err

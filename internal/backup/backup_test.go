@@ -477,7 +477,7 @@ func TestDigestStampAndIncompleteNoticeWriteFailuresAreLogged(t *testing.T) {
 func TestCompleteBackupClearsIncompleteLog(t *testing.T) {
 	f := &run.Fake{}
 	d, _ := deps(t, f)
-	logPath, err := incompleteLogPath()
+	logPath, err := IncompleteLogPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +508,7 @@ func TestManualIncompleteRunDoesNotWriteReport(t *testing.T) {
 	if err := Run(context.Background(), d); err != nil {
 		t.Fatalf("incomplete backup must not fail Run: %v", err)
 	}
-	logPath, err := incompleteLogPath()
+	logPath, err := IncompleteLogPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +527,7 @@ func TestManualIncompleteRunDoesNotClearExistingReport(t *testing.T) {
 	}}
 	d, _ := deps(t, f)
 	d.Scheduled = false
-	logPath, err := incompleteLogPath()
+	logPath, err := IncompleteLogPath()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +553,7 @@ func TestManualCompleteRunDoesNotClearExistingReport(t *testing.T) {
 	f := &run.Fake{}
 	d, _ := deps(t, f)
 	d.Scheduled = false
-	logPath, err := incompleteLogPath()
+	logPath, err := IncompleteLogPath()
 	if err != nil {
 		t.Fatal(err)
 	}
