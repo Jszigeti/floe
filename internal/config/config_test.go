@@ -54,14 +54,14 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, ".yarn/berry/cache")) {
 		t.Fatal("want yarn berry cache excluded by default")
 	}
-	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Application Support/FileProvider")) {
-		t.Fatal("want FileProvider excluded by default")
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Application Support/FileProvider/*/wharf")) {
+		t.Fatal("want FileProvider wharf staging area excluded by default")
 	}
 	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Group Containers/group.com.apple.CoreSpeech/Caches")) {
 		t.Fatal("want CoreSpeech caches excluded by default")
 	}
-	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Group Containers/group.com.apple.secure-control-center-preferences")) {
-		t.Fatal("want secure-control-center-preferences excluded by default")
+	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Group Containers/group.com.apple.secure-control-center-preferences/Library/Preferences")) {
+		t.Fatal("want secure-control-center-preferences unreadable preferences excluded by default")
 	}
 }
 
