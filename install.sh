@@ -21,6 +21,10 @@ TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n '
 URL="https://github.com/$REPO/releases/download/$TAG/floe_${TAG#v}_darwin_${ARCH}.tar.gz"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+
+UPGRADE=false
+[ -e "$INSTALL_DIR/floe" ] && UPGRADE=true
+
 curl -fsSL "$URL" | tar -xz -C "$TMP"
 mkdir -p "$INSTALL_DIR"
 mv "$TMP/floe" "$INSTALL_DIR/floe"
@@ -32,3 +36,10 @@ case ":$PATH:" in
   *) echo "Add it to your PATH: export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
 esac
 echo "Get started: floe init"
+
+if [ "$UPGRADE" = true ]; then
+  echo ""
+  echo "Note: macOS ties Full Disk Access to the exact binary, so this upgrade cleared it."
+  echo "If you use the daily schedule, re-grant it: System Settings → Privacy & Security →"
+  echo "Full Disk Access → add $INSTALL_DIR/floe. Check anytime with: floe doctor"
+fi
