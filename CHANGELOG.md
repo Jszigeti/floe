@@ -2,6 +2,15 @@
 
 All notable changes to floe are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and floe adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-07-17
+
+### Fixed
+
+- Scheduled backups could silently lose Full Disk Access after an upgrade. macOS binds the permission to the exact binary, so replacing it clears every grant, and the daily run would quietly drop Mail, Messages, Safari, Contacts and Calendars with nothing to warn you. `floe doctor` now reports what the last scheduled run actually skipped, and `install.sh` says so after an upgrade. Signing releases to keep the permission across upgrades is tracked in #7 (#6).
+- `floe doctor`'s Full Disk Access check reported the permissions of the shell it was run from, which said nothing about the scheduled run. It is now labelled `full disk access (this shell)`, and the new `last scheduled backup` check carries the verdict that matters.
+- Only scheduled runs own the incomplete report, so running `floe backup` by hand no longer clears the evidence that the schedule is broken. A complete scheduled run clears it, a failed run keeps it.
+- `floe doctor` warns when the installed schedule predates this version and needs `floe init` to report incomplete runs.
+
 ## [0.1.1] - 2026-07-13
 
 ### Fixed
@@ -24,5 +33,6 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 - Notifications: failures and low quota immediately, weekly health digest, never a per-backup ping.
 - Distribution: `install.sh` one-liner, GitHub Releases (darwin arm64/amd64) and `go install`.
 
+[0.1.2]: https://github.com/Jszigeti/floe/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Jszigeti/floe/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jszigeti/floe/releases/tag/v0.1.0
