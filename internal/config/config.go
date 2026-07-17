@@ -47,6 +47,10 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, "Library/Developer"),
 		filepath.Join(home, "Library/Application Support/MobileSync"),
 		filepath.Join(home, "Library/Logs"),
+		// Unreadable no matter the permission granted: excluded so a correctly configured run reports complete.
+		filepath.Join(home, "Library/Application Support/FileProvider"),
+		filepath.Join(home, "Library/Group Containers/group.com.apple.CoreSpeech/Caches"),
+		filepath.Join(home, "Library/Group Containers/group.com.apple.secure-control-center-preferences"),
 		filepath.Join(home, "Library/Biome"),
 		filepath.Join(home, "Library/Saved Application State"),
 		filepath.Join(home, "Library/HTTPStorages"),
