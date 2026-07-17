@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/backup"
@@ -30,8 +31,9 @@ func newBackupCmd(d Deps) *cobra.Command {
 						logf("notification failed: %v", err)
 					}
 				},
-				Now: time.Now,
-				Log: logf,
+				Now:       time.Now,
+				Log:       logf,
+				Scheduled: os.Getenv("FLOE_SCHEDULED") == "1",
 			})
 			if err != nil {
 				logf("backup failed: %v", err)

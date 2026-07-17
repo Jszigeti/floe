@@ -41,6 +41,8 @@ func Plist(execPath string, hour int) (string, error) {
 	<key>Label</key><string>%s</string>
 	<key>ProgramArguments</key>
 	<array><string>%s</string><string>backup</string></array>
+	<key>EnvironmentVariables</key>
+	<dict><key>FLOE_SCHEDULED</key><string>1</string></dict>
 	<key>StartCalendarInterval</key>
 	<dict><key>Hour</key><integer>%d</integer><key>Minute</key><integer>0</integer></dict>
 	<key>StandardOutPath</key><string>%s</string>

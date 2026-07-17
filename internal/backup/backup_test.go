@@ -32,12 +32,13 @@ func deps(t *testing.T, f *run.Fake) (Deps, *notified) {
 	}
 	cfg.Destination = "/plain/dest" // not iCloud unless a test overrides
 	return Deps{
-		Cfg:    cfg,
-		Client: &restic.Client{Bin: "restic", Repo: "/repo", Pass: "pw", R: f},
-		Runner: f,
-		Notify: n.fn,
-		Now:    time.Now,
-		Log:    func(string, ...any) {},
+		Cfg:       cfg,
+		Client:    &restic.Client{Bin: "restic", Repo: "/repo", Pass: "pw", R: f},
+		Runner:    f,
+		Notify:    n.fn,
+		Now:       time.Now,
+		Log:       func(string, ...any) {},
+		Scheduled: true,
 	}, n
 }
 
@@ -491,6 +492,86 @@ func TestCompleteBackupClearsIncompleteLog(t *testing.T) {
 	}
 	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
 		t.Fatalf("want incomplete log removed after a complete run, stat err = %v", err)
+	}
+}
+
+func TestManualIncompleteRunDoesNotWriteReport(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	d.Scheduled = false
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("incomplete backup must not fail Run: %v", err)
+	}
+	logPath, err := incompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("a manual run must not write the incomplete report, stat err = %v", err)
+	}
+}
+
+func TestManualIncompleteRunDoesNotClearExistingReport(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "backup" {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	d.Scheduled = false
+	logPath, err := incompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("stale path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("incomplete backup must not fail Run: %v", err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "stale path\n" {
+		t.Fatalf("a manual run must not touch an existing report, got %q", data)
+	}
+}
+
+func TestManualCompleteRunDoesNotClearExistingReport(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	d.Scheduled = false
+	logPath, err := incompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("stale path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "stale path\n" {
+		t.Fatalf("a manual run must not clear an existing report, got %q", data)
 	}
 }
 

@@ -24,6 +24,7 @@ func TestPlistContainsScheduleAndBinary(t *testing.T) {
 		"<string>backup</string>",
 		"<key>Hour</key><integer>13</integer>",
 		"floe.log",
+		"FLOE_SCHEDULED",
 	} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("plist missing %q:\n%s", want, p)

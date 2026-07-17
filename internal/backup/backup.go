@@ -69,8 +69,10 @@ func logIncomplete(d Deps, err error) {
 	}
 
 	// Lives inside the backup scope on purpose: the last failure report travels with the snapshots.
-	if werr := writeIncompleteLog(ie.Unreadable); werr != nil {
-		d.Log("incomplete-log write failed: %v", werr)
+	if d.Scheduled {
+		if werr := writeIncompleteLog(ie.Unreadable); werr != nil {
+			d.Log("incomplete-log write failed: %v", werr)
+		}
 	}
 	examples := ie.Unreadable
 	if len(examples) > maxIncompleteExamples {
@@ -88,6 +90,10 @@ type Deps struct {
 	Notify func(title, msg string)
 	Now    func() time.Time
 	Log    func(format string, a ...any)
+	// Scheduled is true only for the launchd-triggered run (see FLOE_SCHEDULED
+	// in internal/launchd). A manual `floe backup` never owns the incomplete
+	// report — see logIncomplete and the Run backup branch.
+	Scheduled bool
 }
 
 func Run(ctx context.Context, d Deps) error {
@@ -148,7 +154,9 @@ func Run(ctx context.Context, d Deps) error {
 			d.Notify("floe backup failed", err.Error())
 			return err
 		}
-	} else {
+	} else if d.Scheduled {
+		// Only the scheduled run owns this report: a manual run has the terminal's
+		// permissions and would clear evidence of a broken schedule.
 		clearIncompleteLog(d)
 	}
 
