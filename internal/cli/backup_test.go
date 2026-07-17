@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jszigeti/floe/internal/backup"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -133,6 +135,68 @@ func TestBackupLogsFailedNotification(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "notification failed") {
 		t.Fatalf("output missing 'notification failed':\n%s", out.String())
+	}
+}
+
+// TestBackupHonorsScheduledEnv proves FLOE_SCHEDULED reaches backup.Deps.Scheduled
+// through the real command, observed via behavior: only a scheduled run owns the
+// incomplete-backup report (see internal/backup.logIncomplete).
+func TestBackupHonorsScheduledEnv(t *testing.T) {
+	// The stderr line must match restic.unreadablePathRe (split "err"+"or:" so this
+	// source line itself never matches it) so IncompleteError.Unreadable is non-empty —
+	// otherwise logIncomplete takes the raw-detail fallback and never writes a report.
+	script := `printf 'err''or: open /Users/x/unreadable: operation not permitted\n' >&2; exit 3`
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", script}})
+	if exit3Err == nil {
+		t.Fatal("want exit 3 to produce an error")
+	}
+
+	tests := []struct {
+		name       string
+		setEnv     bool
+		env        string
+		wantReport bool
+	}{
+		{name: "scheduled", setEnv: true, env: "1", wantReport: true},
+		{name: "unset", setEnv: false, wantReport: false},
+		{name: "zero", setEnv: true, env: "0", wantReport: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &run.Fake{}
+			setupHome(t, f)
+			if tt.setEnv {
+				t.Setenv("FLOE_SCHEDULED", tt.env)
+			} else if orig, ok := os.LookupEnv("FLOE_SCHEDULED"); ok {
+				_ = os.Unsetenv("FLOE_SCHEDULED")
+				t.Cleanup(func() { _ = os.Setenv("FLOE_SCHEDULED", orig) })
+			}
+			f.Handler = func(c run.Cmd) (string, error) {
+				if len(c.Args) > 0 && c.Args[0] == "backup" {
+					return "", exit3Err
+				}
+				if c.Name == "security" {
+					return "pw\n", nil
+				}
+				return "", nil
+			}
+			cmd := Root(Deps{Version: "t", Runner: f})
+			cmd.SetArgs([]string{"backup"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("incomplete backup must not fail Execute: %v", err)
+			}
+
+			logPath, err := backup.IncompleteLogPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, statErr := os.Stat(logPath)
+			gotReport := statErr == nil
+			if gotReport != tt.wantReport {
+				t.Errorf("report exists = %v, want %v (stat err: %v)", gotReport, tt.wantReport, statErr)
+			}
+		})
 	}
 }
 
