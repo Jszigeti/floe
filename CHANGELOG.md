@@ -15,7 +15,7 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 ### Fixed
 
-- Incomplete backups (missing Full Disk Access) now log a one-line summary — unreadable-file count, a few example paths and a pointer to `~/.local/state/floe/last_incomplete.log` — instead of dumping restic's full output (#1, #2).
+- Incomplete backups (missing Full Disk Access) now log a one-line summary (unreadable-file count, a few example paths and a pointer to `~/.local/state/floe/last_incomplete.log`) instead of dumping restic's full output (#1, #2).
 - The Full Disk Access hint names the app to grant (Terminal, iTerm or your editor, detected via `TERM_PROGRAM`) alongside the floe binary (#3).
 - `floe init` ends with a reminder that the passphrase lives in the macOS Keychain and can be shown again with `floe passphrase` (#4).
 
@@ -28,8 +28,8 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 - Commands: `backup`, `status`, `snapshots`, `restore`, `doctor`, `passphrase`, `uninstall`.
 - iCloud awareness: dataless repo files detected and re-downloaded, quota checked before every backup, prune deferred while an iCloud sync is pending (applied at the start of the next run).
 - System reinstall manifest captured on every backup: Homebrew `Brewfile`, App Store apps, `/Applications` listing, crontab.
-- Smart default excludes covering regenerable content only (caches, package stores, Chromium caches, Docker's VM disk); app data is never excluded by default.
-- macOS TCC handling: backups missing protected files (no Full Disk Access) complete as "incomplete" with a weekly-throttled notice instead of failing; `doctor` checks Full Disk Access.
+- Smart default excludes covering regenerable content only (caches, package stores, Chromium caches, Docker's VM disk). App data is never excluded by default.
+- macOS TCC handling: backups missing protected files (no Full Disk Access) complete as "incomplete" with a weekly-throttled notice instead of failing, and `doctor` checks Full Disk Access.
 - Notifications: failures and low quota immediately, weekly health digest, never a per-backup ping.
 - Distribution: `install.sh` one-liner, GitHub Releases (darwin arm64/amd64) and `go install`.
 
