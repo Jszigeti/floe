@@ -158,6 +158,91 @@ func TestDoctorChecksFullDiskAccess(t *testing.T) {
 	}
 }
 
+func TestLastIncompleteReport(t *testing.T) {
+	cases := []struct {
+		name      string
+		content   string // empty means don't write the file
+		wantCount int
+		wantErr   bool
+	}{
+		{"missing file", "", 0, true},
+		{"one path", "one\n", 1, false},
+		{"three paths", "a\nb\nc\n", 3, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			if c.content != "" {
+				p := filepath.Join(os.Getenv("HOME"), ".local/state/floe/last_incomplete.log")
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(c.content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			count, when, err := lastIncompleteReport()
+			if c.wantErr {
+				if err == nil {
+					t.Fatal("want an error for a missing state file")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if count != c.wantCount {
+				t.Fatalf("count = %d, want %d", count, c.wantCount)
+			}
+			if when.IsZero() {
+				t.Fatal("want a non-zero mtime")
+			}
+		})
+	}
+}
+
+func TestDoctorReportsCompleteWhenNoIncompleteLog(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("healthy doctor must exit 0: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "last scheduled backup") || !strings.Contains(s, "complete") {
+		t.Fatalf("doctor output missing complete last-scheduled-backup line:\n%s", s)
+	}
+}
+
+func TestDoctorWarnsWhenLastScheduledBackupSkippedFiles(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	logPath := filepath.Join(os.Getenv("HOME"), ".local/state/floe/last_incomplete.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("a\nb\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("a skipped-files warning must not fail doctor: %v\n%s", err, out.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "skipped 3 protected files") {
+		t.Fatalf("doctor output missing skipped-file count:\n%s", s)
+	}
+	if !strings.Contains(s, "!") {
+		t.Fatalf("doctor output missing warn marker:\n%s", s)
+	}
+}
+
 func TestHostAppHint(t *testing.T) {
 	cases := []struct {
 		name, termProgram, want string

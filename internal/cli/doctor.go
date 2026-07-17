@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/icloud"
@@ -40,6 +42,26 @@ func interpretFDAProbe(err error) (bool, bool, string) {
 		return true, true, fmt.Sprintf("denied — Mail, Messages and Safari data will be skipped; grant Full Disk Access to %s and to the floe binary in System Settings → Privacy & Security", hostAppHint())
 	}
 	return true, false, "ok"
+}
+
+// lastIncompleteReport reads last_incomplete.log, the report a scheduled
+// backup writes when Full Disk Access blocks it from reading protected
+// files, and returns how many paths it lists and when it was written.
+func lastIncompleteReport() (count int, when time.Time, err error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	p := filepath.Join(home, ".local/state/floe/last_incomplete.log")
+	info, err := os.Stat(p)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	return len(strings.Split(strings.TrimSpace(string(data)), "\n")), info.ModTime(), nil
 }
 
 type check struct {
@@ -98,7 +120,7 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					}
 					return true, false, repo
 				}},
-				{"full disk access", func(ctx context.Context) (bool, bool, string) {
+				{"full disk access (this shell)", func(ctx context.Context) (bool, bool, string) {
 					home, err := os.UserHomeDir()
 					if err != nil {
 						return false, false, err.Error()
@@ -106,6 +128,22 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					// ~/Library/Mail is TCC-protected: readable only with Full Disk Access.
 					_, err = os.ReadDir(filepath.Join(home, "Library/Mail"))
 					return interpretFDAProbe(err)
+				}},
+				{"last scheduled backup", func(ctx context.Context) (bool, bool, string) {
+					count, when, err := lastIncompleteReport()
+					if err != nil {
+						if errors.Is(err, fs.ErrNotExist) {
+							return true, false, "complete"
+						}
+						return true, false, "unknown"
+					}
+					bin, err := os.Executable()
+					if err != nil {
+						bin = "the floe binary"
+					}
+					return true, true, fmt.Sprintf(
+						"skipped %d protected files on %s — macOS ties Full Disk Access to the exact binary, so re-grant it to %s after every upgrade (System Settings → Privacy & Security)",
+						count, when.Format("2006-01-02 3:04 PM"), bin)
 				}},
 			}
 			if icloud.IsICloudPath(cfg.Destination) {
