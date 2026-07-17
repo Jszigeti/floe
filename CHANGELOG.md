@@ -2,6 +2,12 @@
 
 All notable changes to floe are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and floe adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-07-17
+
+### Fixed
+
+- A correctly configured machine reported every backup as incomplete because three paths under `~/Library` are unreadable whatever permission is granted (an iCloud FileProvider tombstone, a speech-model cache and a preferences file macOS protects by design). They are excluded by default now, so runs report complete and the Full Disk Access warning goes back to meaning something (#8).
+
 ## [0.1.2] - 2026-07-17
 
 ### Fixed
@@ -33,6 +39,7 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 - Notifications: failures and low quota immediately, weekly health digest, never a per-backup ping.
 - Distribution: `install.sh` one-liner, GitHub Releases (darwin arm64/amd64) and `go install`.
 
+[0.1.3]: https://github.com/Jszigeti/floe/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Jszigeti/floe/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Jszigeti/floe/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Jszigeti/floe/releases/tag/v0.1.0
