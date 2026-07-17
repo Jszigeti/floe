@@ -61,7 +61,16 @@ func lastIncompleteReport() (count int, when time.Time, err error) {
 	if err != nil {
 		return 0, time.Time{}, err
 	}
-	return len(strings.Split(strings.TrimSpace(string(data)), "\n")), info.ModTime(), nil
+	// A 0-byte or whitespace-only file (a run killed mid-write, since
+	// writeIncompleteLog truncates before writing) must count as zero, not
+	// one blank entry.
+	count = 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count, info.ModTime(), nil
 }
 
 type check struct {

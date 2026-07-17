@@ -575,6 +575,27 @@ func TestManualCompleteRunDoesNotClearExistingReport(t *testing.T) {
 	}
 }
 
+func TestClearIncompleteLogHomeErrorIsLogged(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	d.Scheduled = true
+	t.Setenv("HOME", "")
+	var logs []string
+	d.Log = func(format string, a ...any) { logs = append(logs, fmt.Sprintf(format, a...)) }
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, l := range logs {
+		if strings.Contains(l, "incomplete-log removal failed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("want an incomplete-log removal failed log on a HOME resolution error, got %v", logs)
+	}
+}
+
 func TestQuotaLowNotifies(t *testing.T) {
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		if c.Name == "brctl" && c.Args[0] == "quota" {

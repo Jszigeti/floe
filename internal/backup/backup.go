@@ -47,6 +47,7 @@ func writeIncompleteLog(paths []string) error {
 func clearIncompleteLog(d Deps) {
 	p, err := IncompleteLogPath()
 	if err != nil {
+		d.Log("incomplete-log removal failed: %v", err)
 		return
 	}
 	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {

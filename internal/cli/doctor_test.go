@@ -225,18 +225,21 @@ func TestDoctorChecksFullDiskAccess(t *testing.T) {
 func TestLastIncompleteReport(t *testing.T) {
 	cases := []struct {
 		name      string
-		content   string // empty means don't write the file
+		write     bool
+		content   string
 		wantCount int
 		wantErr   bool
 	}{
-		{"missing file", "", 0, true},
-		{"one path", "one\n", 1, false},
-		{"three paths", "a\nb\nc\n", 3, false},
+		{"missing file", false, "", 0, true},
+		{"one path", true, "one\n", 1, false},
+		{"three paths", true, "a\nb\nc\n", 3, false},
+		{"empty file", true, "", 0, false},
+		{"whitespace only", true, "   \n\t\n", 0, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())
-			if c.content != "" {
+			if c.write {
 				p, err := backup.IncompleteLogPath()
 				if err != nil {
 					t.Fatal(err)
