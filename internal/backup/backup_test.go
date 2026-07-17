@@ -121,11 +121,28 @@ func TestBackupFailureNotifies(t *testing.T) {
 		return "", nil
 	}}
 	d, n := deps(t, f)
+	logPath, err := IncompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("stale path\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := Run(context.Background(), d); err == nil {
 		t.Fatal("want error")
 	}
 	if len(n.msgs) == 0 || !strings.Contains(n.msgs[0], "disk full") {
 		t.Fatalf("notifications = %v", n.msgs)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "stale path\n" {
+		t.Fatalf("a total backup failure must not touch an existing report (no new snapshot was taken), got %q", data)
 	}
 }
 
