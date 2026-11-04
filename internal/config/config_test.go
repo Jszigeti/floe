@@ -268,3 +268,40 @@ func TestLoadRejectsEmptyDestination(t *testing.T) {
 		t.Fatalf("err = %v, want mention of floe init", err)
 	}
 }
+
+func TestRepoPathPrefersTheRecordedRepo(t *testing.T) {
+	c := Config{Destination: "/dest", Repo: "/dest/Floe.backup/Old-Name"}
+	got, err := c.RepoPath()
+	if err != nil || got != "/dest/Floe.backup/Old-Name" {
+		t.Fatalf("RepoPath = %q, %v", got, err)
+	}
+}
+
+func TestMachineNameIsTheSanitizedHostname(t *testing.T) {
+	name, err := MachineName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name == "" || strings.Contains(name, " ") || strings.HasSuffix(name, ".local") {
+		t.Fatalf("name = %q", name)
+	}
+}
+
+func TestSaveLoadKeepsIdentity(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	c, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Repo, c.Machine = "/dest/Floe.backup/Mac", "UUID-1"
+	if err := c.Save(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Repo != c.Repo || got.Machine != c.Machine {
+		t.Fatalf("loaded repo = %q, machine = %q", got.Repo, got.Machine)
+	}
+}

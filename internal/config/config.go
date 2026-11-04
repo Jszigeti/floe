@@ -25,9 +25,13 @@ type Hooks struct {
 	Post []string `toml:"post"`
 }
 
+// Repo and Machine tie a config to one backup folder and one Mac: a rename keeps the
+// folder, and a config copied to another Mac is caught before it backs up.
 type Config struct {
 	Destination string    `toml:"destination"`
 	Hour        int       `toml:"hour"`
+	Repo        string    `toml:"repo"`
+	Machine     string    `toml:"machine"`
 	Retention   Retention `toml:"retention"`
 	Scope       Scope     `toml:"scope"`
 	Hooks       Hooks     `toml:"hooks"`
@@ -183,12 +187,23 @@ func (c Config) Save() error {
 	return f.Close()
 }
 
-func (c Config) RepoPath() (string, error) {
+// MachineName is the hostname floe names a new backup folder after.
+func MachineName() (string, error) {
 	host, err := os.Hostname()
 	if err != nil {
 		return "", err
 	}
-	host = strings.TrimSuffix(host, ".local")
-	host = strings.ReplaceAll(host, " ", "-")
-	return filepath.Join(c.Destination, "Floe.backup", host), nil
+	return strings.ReplaceAll(strings.TrimSuffix(host, ".local"), " ", "-"), nil
+}
+
+// RepoPath is the recorded repository, or the one a config from before v0.2.0 implies.
+func (c Config) RepoPath() (string, error) {
+	if c.Repo != "" {
+		return c.Repo, nil
+	}
+	name, err := MachineName()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(c.Destination, "Floe.backup", name), nil
 }

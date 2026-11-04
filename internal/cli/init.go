@@ -53,6 +53,8 @@ func newInitCmd(d Deps) *cobra.Command {
 				return err
 			}
 			cfg.Destination = dest
+			// An unreadable id stays empty and is recorded on the next run.
+			cfg.Machine, _ = machineID(ctx, d.Runner)
 
 			if err := promptScope(cmd, ask, &cfg); err != nil {
 				return err
@@ -172,6 +174,7 @@ func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass
 	if err != nil {
 		return nil, cfg, err
 	}
+	cfg.Repo = repo
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		return nil, cfg, err
 	}

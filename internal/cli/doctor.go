@@ -132,6 +132,16 @@ func newDoctorCmd(d Deps) *cobra.Command {
 				return err
 			}
 			checks := []check{
+				{"this mac", func(ctx context.Context) (bool, bool, string) {
+					foreign, err := foreignConfig(ctx, d.Runner, cfg)
+					if err != nil {
+						return true, true, err.Error()
+					}
+					if foreign {
+						return false, false, foreignConfigMsg
+					}
+					return true, false, "config written on this Mac"
+				}},
 				{"restic binary", func(ctx context.Context) (bool, bool, string) {
 					bin, err := restic.BinPath()
 					if err != nil {

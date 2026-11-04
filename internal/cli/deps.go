@@ -17,6 +17,9 @@ func buildClient(ctx context.Context, r run.Runner) (*restic.Client, config.Conf
 	if err != nil {
 		return nil, config.Config{}, err
 	}
+	if err := adoptIdentity(ctx, r, &cfg); err != nil {
+		return nil, config.Config{}, err
+	}
 	pass, err := keychain.Get(ctx, r)
 	if err != nil {
 		return nil, config.Config{}, err

@@ -21,6 +21,10 @@ func newBackupCmd(d Deps) *cobra.Command {
 				return err
 			}
 			logf := makeLogger(cmd)
+			if err := stopForeignConfig(ctx, d.Runner, cfg); err != nil {
+				logf("backup failed: %v", err)
+				return err
+			}
 			logf("backup started")
 			err = backup.Run(ctx, backup.Deps{
 				Cfg:    cfg,
