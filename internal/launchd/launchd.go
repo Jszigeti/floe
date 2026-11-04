@@ -42,7 +42,7 @@ func Plist(execPath string, hour int) (string, error) {
 	<key>ProgramArguments</key>
 	<array><string>%s</string><string>backup</string></array>
 	<key>EnvironmentVariables</key>
-	<dict><key>FLOE_SCHEDULED</key><string>1</string></dict>
+	<dict><key>FLOE_SCHEDULED</key><string>1</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
 	<key>StartCalendarInterval</key>
 	<dict><key>Hour</key><integer>%d</integer><key>Minute</key><integer>0</integer></dict>
 	<key>StandardOutPath</key><string>%s</string>
