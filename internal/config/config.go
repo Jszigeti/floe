@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -206,4 +208,30 @@ func (c Config) RepoPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(c.Destination, "Floe.backup", name), nil
+}
+
+// Parse reads a config from TOML text, such as the one a snapshot holds.
+func Parse(data string) (Config, error) {
+	var c Config
+	_, err := toml.Decode(data, &c)
+	return c, err
+}
+
+// Rehome moves every path under oldHome to newHome, so a config taken from another account
+// points at this one. \b keeps /Users/alice2 out of a move from /Users/alice.
+func (c Config) Rehome(oldHome, newHome string) Config {
+	re := regexp.MustCompile(regexp.QuoteMeta(oldHome) + `\b`)
+	move := func(list []string) []string {
+		out := slices.Clone(list)
+		for i := range out {
+			out[i] = re.ReplaceAllLiteralString(out[i], newHome)
+		}
+		return out
+	}
+	c.Destination = re.ReplaceAllLiteralString(c.Destination, newHome)
+	c.Scope.Paths = move(c.Scope.Paths)
+	c.Scope.Exclude = move(c.Scope.Exclude)
+	c.Hooks.Pre = move(c.Hooks.Pre)
+	c.Hooks.Post = move(c.Hooks.Post)
+	return c
 }

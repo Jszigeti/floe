@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -303,5 +304,42 @@ func TestSaveLoadKeepsIdentity(t *testing.T) {
 	}
 	if got.Repo != c.Repo || got.Machine != c.Machine {
 		t.Fatalf("loaded repo = %q, machine = %q", got.Repo, got.Machine)
+	}
+}
+
+func TestParseReadsTOML(t *testing.T) {
+	c, err := Parse("hour = 9\n[scope]\npaths = [\"/Users/alice\"]\n")
+	if err != nil || c.Hour != 9 || !slices.Equal(c.Scope.Paths, []string{"/Users/alice"}) {
+		t.Fatalf("Parse = %+v, %v", c, err)
+	}
+	if _, err := Parse("hour = "); err == nil {
+		t.Fatal("want an error for broken TOML")
+	}
+}
+
+func TestRehomeMovesEveryPathUnderTheOldHome(t *testing.T) {
+	c := Config{
+		Destination: "/Users/alice/Library/Mobile Documents/com~apple~CloudDocs",
+		Hour:        9,
+		Scope: Scope{
+			Paths:   []string{"/Users/alice"},
+			Exclude: []string{"/Users/alice/Library/Caches", "node_modules", "/Users/alice2/x"},
+		},
+		Hooks: Hooks{Pre: []string{"sh /Users/alice/bin/export.sh /Users/alice/out"}},
+	}
+	want := Config{
+		Destination: "/Users/bob/Library/Mobile Documents/com~apple~CloudDocs",
+		Hour:        9,
+		Scope: Scope{
+			Paths:   []string{"/Users/bob"},
+			Exclude: []string{"/Users/bob/Library/Caches", "node_modules", "/Users/alice2/x"},
+		},
+		Hooks: Hooks{Pre: []string{"sh /Users/bob/bin/export.sh /Users/bob/out"}},
+	}
+	if got := c.Rehome("/Users/alice", "/Users/bob"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Rehome = %+v\nwant     %+v", got, want)
+	}
+	if c.Scope.Paths[0] != "/Users/alice" {
+		t.Fatal("Rehome must leave the receiver's slices untouched")
 	}
 }

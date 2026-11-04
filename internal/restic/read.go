@@ -58,11 +58,5 @@ func (c *Client) RepoSize(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	var stats struct {
-		TotalSize int64 `json:"total_size"`
-	}
-	if err := json.Unmarshal([]byte(out), &stats); err != nil {
-		return 0, fmt.Errorf("parsing stats: %w", err)
-	}
-	return stats.TotalSize, nil
+	return parseTotalSize(out)
 }
