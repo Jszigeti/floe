@@ -122,7 +122,7 @@ func TestDumpRemovesStaleFileWhenToolFails(t *testing.T) {
 	}
 	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
 		if c.Name == "crontab" {
-			return "", errors.New("crontab: no crontab for user")
+			return "", errors.New("crontab: tmp/tmp.123: Permission denied")
 		}
 		return "", nil
 	}}
@@ -136,6 +136,31 @@ func TestDumpRemovesStaleFileWhenToolFails(t *testing.T) {
 	}
 	if len(warnings) == 0 {
 		t.Fatal("want a warning for the failed crontab collector")
+	}
+}
+
+func TestDumpTreatsMissingCrontabAsEmpty(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "crontab.txt"), []byte("@daily true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "crontab" {
+			return "", errors.New("crontab [-l]: exit status 1: crontab: no crontab for jonas")
+		}
+		return "out", nil
+	}}
+
+	warnings, err := Dump(context.Background(), f, dir, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "crontab.txt")); !os.IsNotExist(err) {
+		t.Fatalf("want stale crontab.txt removed when there is no crontab, err = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("a missing crontab is not a failure, warnings = %v", warnings)
 	}
 }
 

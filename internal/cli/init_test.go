@@ -416,7 +416,7 @@ func TestInitLogsManifestWarningDuringFirstBackup(t *testing.T) {
 			return "", errRepoMissing
 		}
 		if c.Name == "crontab" {
-			return "", errors.New("no crontab for user")
+			return "", errors.New("crontab: Permission denied")
 		}
 		return "", nil
 	}

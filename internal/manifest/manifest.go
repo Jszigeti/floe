@@ -40,7 +40,8 @@ func Dump(ctx context.Context, r run.Runner, dir, appsRoot string) ([]string, er
 	if w := dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, "mas.txt")); w != "" {
 		warnings = append(warnings, w)
 	}
-	if w := dumpCommand(ctx, r, "crontab", []string{"-l"}, filepath.Join(dir, "crontab.txt")); w != "" {
+	// crontab -l exits 1 when the user simply has no crontab: an empty recipe, not a failure.
+	if w := dumpCommand(ctx, r, "crontab", []string{"-l"}, filepath.Join(dir, "crontab.txt")); w != "" && !strings.Contains(w, "no crontab for") {
 		warnings = append(warnings, w)
 	}
 	if w := dumpApplications(appsRoot, filepath.Join(dir, "applications.txt")); w != "" {
