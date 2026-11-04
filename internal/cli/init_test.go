@@ -106,6 +106,9 @@ func TestInitWizardEndToEnd(t *testing.T) {
 	if !strings.Contains(out.String(), "stored in the macOS Keychain") {
 		t.Fatalf("passphrase reminder not shown at end of init:\n%s", out.String())
 	}
+	if strings.Contains(out.String(), "Found") {
+		t.Fatalf("no backup in the destination, yet init asked about one:\n%s", out.String())
+	}
 }
 
 func TestInitFailsWhenHomeUnresolvable(t *testing.T) {

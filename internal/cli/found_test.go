@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bufio"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/run"
+	"github.com/spf13/cobra"
 )
 
 // fakeRepo creates a repository folder in dest whose newest snapshot file is age old.
@@ -124,5 +127,83 @@ func TestInitKeepsThisMacsRepo(t *testing.T) {
 	}
 	if cfg.Repo != own {
 		t.Fatalf("repo = %q, want %q", cfg.Repo, own)
+	}
+}
+
+func testPrompter(stdin string) (prompter, *bytes.Buffer) {
+	cmd := &cobra.Command{}
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	return prompter{cmd: cmd, in: bufio.NewScanner(strings.NewReader(stdin))}, out
+}
+
+func TestFindBackupsNewestFirst(t *testing.T) {
+	dest := t.TempDir()
+	fakeRepo(t, dest, "Old-Mac", 30*24*time.Hour)
+	fakeRepo(t, dest, "Air", 3*24*time.Hour)
+	if err := os.MkdirAll(filepath.Join(dest, "Floe.backup", "Empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	found, err := findBackups(dest)
+	if err != nil || len(found) != 2 || found[0].Name != "Air" || found[1].Name != "Old-Mac" {
+		t.Fatalf("findBackups = %+v, %v", found, err)
+	}
+	if age := time.Since(found[0].LastSaved); age < 71*time.Hour || age > 73*time.Hour {
+		t.Fatalf("last saved %v ago, want about 3 days", age)
+	}
+}
+
+func TestFindBackupsWithoutFolder(t *testing.T) {
+	found, err := findBackups(t.TempDir())
+	if err != nil || len(found) != 0 {
+		t.Fatalf("findBackups = %+v, %v", found, err)
+	}
+}
+
+func TestChooseBackup(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name        string
+		age         time.Duration
+		stdin       string
+		wantReplace bool
+		wantErr     bool
+	}{
+		{"an old backup defaults to replace", 10 * 24 * time.Hour, "\n", true, false},
+		{"a recent backup defaults to alongside", time.Hour, "\n", false, false},
+		{"replacing a recent backup once the other Mac is stopped", time.Hour, "1\ny\n", true, false},
+		{"replacing a recent backup stops otherwise", time.Hour, "1\n\n", false, true},
+		{"a choice out of range", time.Hour, "7\n", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, out := testPrompter(tc.stdin)
+			found := []foundBackup{{Name: "Air", Path: "/d/Floe.backup/Air", LastSaved: now.Add(-tc.age)}}
+			b, replace, err := chooseBackup(p, found, now)
+			if (err != nil) != tc.wantErr || replace != tc.wantReplace || (replace && b.Name != "Air") {
+				t.Fatalf("chooseBackup = %+v, %v, %v\n%s", b, replace, err, out)
+			}
+			if !strings.Contains(out.String(), "Found a backup: Air, last saved "+now.Add(-tc.age).Format(time.DateOnly)+".") {
+				t.Fatalf("question:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestChooseBackupListsEveryBackup(t *testing.T) {
+	now := time.Now()
+	p, out := testPrompter("2\n")
+	found := []foundBackup{
+		{Name: "Air", LastSaved: now.Add(-3 * 24 * time.Hour)},
+		{Name: "Old-Mac", LastSaved: now.Add(-30 * 24 * time.Hour)},
+	}
+	b, replace, err := chooseBackup(p, found, now)
+	if err != nil || !replace || b.Name != "Old-Mac" {
+		t.Fatalf("chooseBackup = %+v, %v, %v", b, replace, err)
+	}
+	for _, want := range []string{"Found 2 backups.", "  2. Replace Old-Mac, last saved ", "  3. Add this Mac alongside: new backup, the others keep their own", "Choice [1]: "} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
 	}
 }

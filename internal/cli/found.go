@@ -6,6 +6,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
 )
@@ -43,4 +46,90 @@ func freeRepoPath(dest string) (string, error) {
 		}
 		path = fmt.Sprintf("%s-%d", base, i)
 	}
+}
+
+// recentlySaved is how fresh a backup is when its Mac may still be writing to it.
+const recentlySaved = 48 * time.Hour
+
+type foundBackup struct {
+	Name      string
+	Path      string
+	LastSaved time.Time
+}
+
+// findBackups lists dest's repositories that hold a snapshot, newest first. It reads
+// modification times only, which iCloud placeholders keep without being downloaded.
+func findBackups(dest string) ([]foundBackup, error) {
+	root := filepath.Join(dest, "Floe.backup")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var found []foundBackup
+	for _, e := range entries {
+		path := filepath.Join(root, e.Name())
+		if !e.IsDir() {
+			continue
+		}
+		if last := lastSnapshot(path); !last.IsZero() {
+			found = append(found, foundBackup{Name: e.Name(), Path: path, LastSaved: last})
+		}
+	}
+	slices.SortFunc(found, func(a, b foundBackup) int { return b.LastSaved.Compare(a.LastSaved) })
+	return found, nil
+}
+
+// lastSnapshot is the newest modification time in repo/snapshots, zero when it holds none.
+func lastSnapshot(repo string) time.Time {
+	dir := filepath.Join(repo, "snapshots")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return time.Time{}
+	}
+	var last time.Time
+	for _, e := range entries {
+		if info, err := os.Stat(filepath.Join(dir, e.Name())); err == nil && info.ModTime().After(last) {
+			last = info.ModTime()
+		}
+	}
+	return last
+}
+
+// chooseBackup asks whether this Mac replaces one of found, newest first; false adds it alongside.
+func chooseBackup(p prompter, found []foundBackup, now time.Time) (foundBackup, bool, error) {
+	alongside := len(found) + 1
+	if len(found) == 1 {
+		b := found[0]
+		p.cmd.Printf("Found a backup: %s, last saved %s.\n", b.Name, b.LastSaved.Format(time.DateOnly))
+		p.cmd.Printf("  1. Replace %s: restore its files here and continue its backup\n", b.Name)
+		p.cmd.Printf("  2. Add this Mac alongside: new backup, %s keeps its own\n", b.Name)
+	} else {
+		p.cmd.Printf("Found %d backups.\n", len(found))
+		for i, b := range found {
+			p.cmd.Printf("  %d. Replace %s, last saved %s: restore its files here and continue its backup\n", i+1, b.Name, b.LastSaved.Format(time.DateOnly))
+		}
+		p.cmd.Printf("  %d. Add this Mac alongside: new backup, the others keep their own\n", alongside)
+	}
+	def := alongside
+	if now.Sub(found[0].LastSaved) > recentlySaved {
+		def = 1
+	}
+	n, err := strconv.Atoi(p.ask("Choice", strconv.Itoa(def)))
+	if err != nil || n < 1 || n > alongside {
+		return foundBackup{}, false, fmt.Errorf("choice must be a number from 1 to %d", alongside)
+	}
+	if n == alongside {
+		return foundBackup{}, false, nil
+	}
+	b := found[n-1]
+	if now.Sub(b.LastSaved) <= recentlySaved {
+		p.cmd.Printf("%s was saved less than 2 days ago. On that Mac, run `floe backup`, then `floe uninstall`, so it stops writing into this backup.\n", b.Name)
+		if p.ask("Done on the other Mac? (y/n)", "n") != "y" {
+			return foundBackup{}, false, errors.New("stopped: run floe backup, then floe uninstall on the other Mac, then floe init here again")
+		}
+	}
+	return b, true, nil
 }

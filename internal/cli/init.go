@@ -48,6 +48,19 @@ func newInitCmd(d Deps) *cobra.Command {
 			cfg.Machine, _ = machineID(ctx, d.Runner)
 			cfg.Repo = ownRepo(dest, cfg.Machine)
 			if cfg.Repo == "" {
+				found, err := findBackups(dest)
+				if err != nil {
+					return err
+				}
+				if len(found) > 0 {
+					b, replace, err := chooseBackup(p, found, time.Now())
+					if err != nil {
+						return err
+					}
+					if replace {
+						return runReplace(ctx, p, d, bin, dest, cfg.Machine, b)
+					}
+				}
 				if cfg.Repo, err = freeRepoPath(dest); err != nil {
 					return err
 				}
@@ -205,4 +218,10 @@ func (p prompter) ask(prompt, def string) string {
 		}
 	}
 	return def
+}
+
+// confirm waits for Enter; q or a closed input is false, so a wait never loops on a piped stdin.
+func (p prompter) confirm(prompt string) bool {
+	p.cmd.Printf("%s: ", prompt)
+	return p.in.Scan() && strings.TrimSpace(p.in.Text()) != "q"
 }
