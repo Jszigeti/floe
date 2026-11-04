@@ -61,13 +61,13 @@ The wizard walks you through setup in about a minute: pick a destination (defaul
 
 Your home folder, minus the noise. The defaults exclude what a fresh install can regenerate: caches, `node_modules` and friends, package-manager stores, SDKs, downloadable AI models, crash dumps, Docker's VM disk. Your documents, projects, photos, dotfiles and app settings (`~/Library/Preferences`, `~/Library/Application Support`) are all in. The wizard shows your largest directories at setup so you can trim further, and `paths` in the config accepts anything else you want covered. One default is a judgment call: excluding Ollama models assumes they can be pulled again, so remove that entry from the config if you build custom models locally.
 
-Apps and the system are not copied, they are captured as a recipe instead: every backup writes a small manifest (Homebrew `Brewfile`, App Store apps, the contents of `/Applications`, your crontab) into `~/.local/state/floe/manifest`, inside the snapshot. On a new Mac you restore your files with floe, then replay the manifest to reinstall everything. Same outcome as copying 80 GB of apps, for a few kilobytes.
+Apps and the system are not copied, they are captured as a recipe instead: every backup writes a small manifest (Homebrew `Brewfile`, App Store apps, the contents of `/Applications`, your crontab) into `~/.local/state/floe/manifest`, inside the snapshot. On a new Mac, `floe init` replays it for you. Same outcome as copying 80 GB of apps, for a few kilobytes.
 
 One macOS quirk to know: Mail, Messages and Safari data are protected by the system. Grant your terminal (and floe) Full Disk Access in System Settings → Privacy & Security if you want them included. Without it the backup still runs and you get at most one "backup incomplete" reminder a week instead of a daily failure. One catch worth knowing: macOS binds that permission to the exact binary, so every floe upgrade clears it and you have to grant it again. `floe doctor` tells you what the last scheduled run actually skipped, so you always know where you stand.
 
 ## How it works
 
-- Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>`. Repositories are never shared between machines because iCloud sync corrupts restic's locks when two Macs write to the same repo.
+- Each Mac gets its own restic repository at `<destination>/Floe.backup/<hostname>`, named once at setup. Renaming the Mac keeps it, and a config copied to another Mac refuses to back up until you run `floe init` there. Repositories are never shared between machines because iCloud sync corrupts restic's locks when two Macs write to the same repo.
 - A LaunchAgent runs the backup daily (1:00 PM by default). Each run applies retention first (keep 7 daily, 4 weekly, 6 monthly snapshots), then takes the new snapshot.
 - The passphrase is generated at setup and lives in the macOS Keychain (service `floe`, account `restic`).
 - Failures and low quota notify you immediately. Success is a weekly digest, never a daily ping.
@@ -125,13 +125,7 @@ The backup is unrecoverable. There is no reset. Save it in a password manager th
 Yes. Each Mac gets its own repository under `Floe.backup/<hostname>`, so they never collide.
 
 **How do I restore on a new Mac?**
-`floe init` on the new machine creates a fresh repository named after its hostname, so it won't see the old Mac's history by itself. To pull files from the old machine's backup: install floe, make sure the destination folder is synced locally, then run restic directly against the old repository:
-
-```bash
-RESTIC_REPOSITORY="<destination>/Floe.backup/<old-hostname>" \
-RESTIC_PASSWORD="<saved passphrase>" \
-~/.local/share/floe/bin/restic restore latest --target ./restored
-```
+Install floe, run `floe init` and choose Replace when it finds the old Mac's backup. floe restores your home folder, `~/Library` and the login keychain included, takes over the old Mac's settings, reinstalls your apps from the recipe and continues the same history. Keep your passphrase at hand and grant your terminal Full Disk Access first. If the old Mac still runs, run `floe backup`, then `floe uninstall` on it before you start.
 
 ## Uninstall
 

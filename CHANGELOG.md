@@ -2,6 +2,22 @@
 
 All notable changes to floe are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and floe adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- A new Mac no longer needs Migration Assistant. `floe init` finds the backups already in iCloud and offers to replace the old Mac: it restores the whole home folder, `~/Library` and the login keychain included, takes over the old Mac's settings, reinstalls its apps from the recipe (Homebrew, App Store), lists what needs a hand, and continues the old Mac's history.
+
+### Changed
+
+- Renaming a Mac no longer starts a new backup: the config records its backup folder and the Mac it belongs to.
+- A config copied to another Mac, by Migration Assistant for instance, stops backing up and says `This floe config comes from another Mac — run floe init`, instead of writing into the old Mac's backup. `floe doctor` reports it too.
+- `floe init` never sets up a new backup inside a folder that already exists: it uses `<name>-2`.
+
+### Fixed
+
+- Snapshots taken under an older Mac name were kept forever, in a retention group of their own. Retention now treats every snapshot of a backup as one history.
+
 ## [0.1.5] - 2026-11-04
 
 ### Fixed
