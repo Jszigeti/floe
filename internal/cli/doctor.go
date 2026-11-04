@@ -96,6 +96,12 @@ func lastScheduledFailure() (when time.Time, failed bool) {
 			when, failed = at, true
 		}
 	}
+	// `floe init` rewrites the plist: a failure from before that reinstall says nothing about the new schedule.
+	if pp, err := launchd.PlistPath(); err == nil {
+		if info, err := os.Stat(pp); err == nil && info.ModTime().After(when) {
+			return time.Time{}, false
+		}
+	}
 	return when, failed
 }
 

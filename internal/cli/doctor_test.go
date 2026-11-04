@@ -625,3 +625,21 @@ func TestDoctorFailsWhenLastScheduledBackupFailed(t *testing.T) {
 		t.Fatalf("doctor output missing the failed scheduled run:\n%s", s)
 	}
 }
+
+func TestLastScheduledFailureIgnoresFailuresBeforeReinstall(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	writeScheduledLog(t, "2026-09-20T13:06:32+02:00 backup failed: boom\n")
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pp, []byte("plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed := lastScheduledFailure(); failed {
+		t.Fatal("a failure older than the installed schedule must not count")
+	}
+}
