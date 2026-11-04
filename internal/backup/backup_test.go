@@ -137,6 +137,9 @@ func TestBackupFailureNotifies(t *testing.T) {
 	if len(n.msgs) == 0 || !strings.Contains(n.msgs[0], "disk full") {
 		t.Fatalf("notifications = %v", n.msgs)
 	}
+	if n.titles[0] != "floe backup failed, run floe doctor" {
+		t.Fatalf("title = %q", n.titles[0])
+	}
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatal(err)

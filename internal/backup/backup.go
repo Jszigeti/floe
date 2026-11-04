@@ -152,7 +152,7 @@ func Run(ctx context.Context, d Deps) error {
 				}
 			}
 		} else {
-			d.Notify("floe backup failed", err.Error())
+			d.Notify("floe backup failed, run floe doctor", err.Error())
 			return err
 		}
 	} else if d.Scheduled {
