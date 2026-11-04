@@ -2,6 +2,12 @@
 
 All notable changes to floe are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and floe adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-11-04
+
+### Fixed
+
+- A Mac without a crontab no longer reports `crontab -l failed` on every backup: an absent crontab is an empty recipe, not a failure.
+
 ## [0.1.4] - 2026-11-04
 
 ### Fixed
