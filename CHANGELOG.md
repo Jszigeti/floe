@@ -2,6 +2,18 @@
 
 All notable changes to floe are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and floe adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Scheduled backups failed every day once macOS had moved some of the repository's files to iCloud to free disk space, with `resource deadlock avoided`, while a manual `floe backup` worked. macOS starts scheduled jobs with downloads of those files turned off. floe now turns them on for itself, and restic inherits it.
+- The system manifest of scheduled runs missed the Homebrew `Brewfile` and the App Store app list: the schedule's PATH did not include Homebrew. Re-run `floe init` to update an existing schedule.
+- A failed backup alert now says to run `floe doctor`.
+
+### Changed
+
+- Building from source needs the Xcode Command Line Tools.
+
 ## [0.1.3] - 2026-07-17
 
 ### Fixed
