@@ -27,16 +27,7 @@ func newInitCmd(d Deps) *cobra.Command {
 		Short: "Set up floe: repository, passphrase, schedule, first backup",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			in := bufio.NewScanner(cmd.InOrStdin())
-			ask := func(prompt, def string) string {
-				cmd.Printf("%s [%s]: ", prompt, def)
-				if in.Scan() {
-					if v := strings.TrimSpace(in.Text()); v != "" {
-						return v
-					}
-				}
-				return def
-			}
+			p := prompter{cmd: cmd, in: bufio.NewScanner(cmd.InOrStdin())}
 
 			cmd.Println("→ Ensuring restic binary…")
 			bin, err := restic.EnsureBinary(ctx, "")
@@ -48,15 +39,21 @@ func newInitCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			dest, err := normalizeDestination(ask("Backup destination", cfg.Destination))
+			dest, err := normalizeDestination(p.ask("Backup destination", cfg.Destination))
 			if err != nil {
 				return err
 			}
 			cfg.Destination = dest
 			// An unreadable id stays empty and is recorded on the next run.
 			cfg.Machine, _ = machineID(ctx, d.Runner)
+			cfg.Repo = ownRepo(dest, cfg.Machine)
+			if cfg.Repo == "" {
+				if cfg.Repo, err = freeRepoPath(dest); err != nil {
+					return err
+				}
+			}
 
-			if err := promptScope(cmd, ask, &cfg); err != nil {
+			if err := promptScope(cmd, p.ask, &cfg); err != nil {
 				return err
 			}
 
@@ -65,7 +62,7 @@ func newInitCmd(d Deps) *cobra.Command {
 				return err
 			}
 
-			if h, err := strconv.Atoi(ask("Daily backup hour (0-23)", strconv.Itoa(cfg.Hour))); err == nil && h >= 0 && h <= 23 {
+			if h, err := strconv.Atoi(p.ask("Daily backup hour (0-23)", strconv.Itoa(cfg.Hour))); err == nil && h >= 0 && h <= 23 {
 				cfg.Hour = h
 			}
 
@@ -192,4 +189,20 @@ func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass
 		return nil, cfg, err
 	}
 	return client, cfg, nil
+}
+
+// prompter reads the wizard's answers from the command's input.
+type prompter struct {
+	cmd *cobra.Command
+	in  *bufio.Scanner
+}
+
+func (p prompter) ask(prompt, def string) string {
+	p.cmd.Printf("%s [%s]: ", prompt, def)
+	if p.in.Scan() {
+		if v := strings.TrimSpace(p.in.Text()); v != "" {
+			return v
+		}
+	}
+	return def
 }
