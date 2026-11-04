@@ -14,6 +14,8 @@ type Cmd struct {
 	Args   []string
 	Env    []string
 	Stdout io.Writer // when set, output streams here as it's produced, in addition to being captured
+	// Terminal hands the user's terminal to the command, for an installer that prompts; output is still captured.
+	Terminal bool
 }
 
 type Runner interface {
@@ -31,6 +33,11 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 		cmd.Stdout = io.MultiWriter(&stdout, c.Stdout)
 	}
 	cmd.Stderr = &stderr
+	if c.Terminal {
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = io.MultiWriter(&stdout, os.Stdout)
+		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+	}
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), fmt.Errorf("%s %v: %w: %s", c.Name, c.Args, err, stderr.String())
 	}

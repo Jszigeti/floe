@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Jszigeti/floe/internal/apps"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
@@ -75,7 +76,8 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := client.RestoreFolder(ctx, snap.ShortID, oldHome, home, replaceExcludes); err != nil && !errors.As(err, &partial) {
 		return fmt.Errorf("restoring %s: %w", b.Name, err)
 	}
-	if _, err := dumpRecipe(ctx, p, client, snap.ShortID, oldHome, home); err != nil {
+	recipe, err := dumpRecipe(ctx, p, client, snap.ShortID, oldHome, home)
+	if err != nil {
 		return err
 	}
 	cfg, err := takeOverConfig(ctx, p, client, snap.ShortID, oldHome, home)
@@ -94,6 +96,8 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 		return err
 	}
 
+	rep := apps.Reinstall(ctx, apps.Deps{Runner: d.Runner, Out: p.cmd.OutOrStdout(), BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}, recipe)
+	printAppsReport(p, rep)
 	if partial != nil {
 		p.cmd.Printf("! %d files could not be restored:\n", len(partial.Failed))
 		for _, f := range partial.Failed {
@@ -212,4 +216,17 @@ func takeOverConfig(ctx context.Context, p prompter, client *restic.Client, id, 
 		return config.Config{}, fmt.Errorf("reading the old Mac's floe config: %w", err)
 	}
 	return old.Rehome(oldHome, home), nil
+}
+
+// printAppsReport lists what the apps step left to do by hand.
+func printAppsReport(p prompter, rep apps.Report) {
+	if len(rep.BrewFailed) > 0 {
+		p.cmd.Printf("! Homebrew could not install: %s\n", strings.Join(rep.BrewFailed, ", "))
+	}
+	if len(rep.Missing) > 0 {
+		p.cmd.Printf("! Reinstall these apps by hand: %s\n", strings.Join(rep.Missing, ", "))
+	}
+	for _, c := range rep.Commands {
+		p.cmd.Printf("! Run later: %s\n", c)
+	}
 }

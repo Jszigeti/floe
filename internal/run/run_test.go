@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -103,5 +104,36 @@ func TestCalledWith(t *testing.T) {
 	}
 	if f.CalledWith("nonexistent") {
 		t.Fatal("want CalledWith false when no call matches at all")
+	}
+}
+
+func TestExecRunnerTerminalHandsOverStdinAndShowsOutput(t *testing.T) {
+	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stdin.WriteString("hi\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stdin.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	shown, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origIn, origOut := os.Stdin, os.Stdout
+	os.Stdin, os.Stdout = stdin, shown
+	t.Cleanup(func() { os.Stdin, os.Stdout = origIn, origOut })
+
+	out, err := ExecRunner{}.Run(context.Background(), Cmd{Name: "sh", Args: []string{"-c", "read x; echo got $x"}, Terminal: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out) != "got hi" {
+		t.Fatalf("captured = %q", out)
+	}
+	if data, err := os.ReadFile(shown.Name()); err != nil || strings.TrimSpace(string(data)) != "got hi" {
+		t.Fatalf("shown = %q, %v", data, err)
 	}
 }

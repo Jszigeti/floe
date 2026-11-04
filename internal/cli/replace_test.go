@@ -252,3 +252,33 @@ func TestReplaceListsFailedFilesAndGoesOn(t *testing.T) {
 		t.Fatalf("config and schedule must follow a partial restore: %+v, %v", cfg, err)
 	}
 }
+
+func TestReplaceReinstallsAppsAfterTheRestore(t *testing.T) {
+	home, dest, _ := startReplace(t)
+	bin := t.TempDir()
+	brew := filepath.Join(bin, "brew")
+	if err := os.WriteFile(brew, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	f := replaceFake(nil, "1000")
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/Brewfile") {
+			return "brew \"jq\"\n", nil
+		}
+		return base(c)
+	}
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	brewfile := filepath.Join(home, ".local/state/floe/recipe/Brewfile")
+	restoreAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool { return len(c.Args) > 0 && c.Args[0] == "restore" })
+	bundleAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool {
+		return c.Name == brew && slices.Equal(c.Args, []string{"bundle", "install", "--file", brewfile})
+	})
+	if restoreAt < 0 || bundleAt < restoreAt {
+		t.Fatalf("brew bundle must run after the restore: restore at %d, bundle at %d", restoreAt, bundleAt)
+	}
+}
