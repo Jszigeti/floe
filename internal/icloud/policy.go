@@ -19,7 +19,7 @@ func AllowDatalessDownloads() error {
 
 func setDatalessPolicy(policy int) error {
 	if rc, err := C.setiopolicy_np(C.IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, C.IOPOL_SCOPE_PROCESS, C.int(policy)); rc != 0 {
-		return fmt.Errorf("setiopolicy_np: %w", err)
+		return fmt.Errorf("setiopolicy_np: %v", err)
 	}
 	return nil
 }
