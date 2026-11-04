@@ -3,6 +3,7 @@ package restic
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/config"
@@ -107,5 +108,15 @@ func TestUnlockRunsUnlock(t *testing.T) {
 	err2 := newTestClient(f2).Unlock(context.Background())
 	if err2 != errTest {
 		t.Fatalf("expected error %v, got %v", errTest, err2)
+	}
+}
+
+func TestForgetGroupsAllSnapshotsTogether(t *testing.T) {
+	f := &run.Fake{}
+	_ = newTestClient(f).Forget(context.Background(), config.Retention{Daily: 7, Weekly: 4, Monthly: 6})
+	args := f.Calls[0].Args
+	i := slices.Index(args, "--group-by")
+	if i < 0 || i+1 >= len(args) || args[i+1] != "" {
+		t.Fatalf("args = %q, want --group-by ''", args)
 	}
 }
