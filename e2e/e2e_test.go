@@ -30,13 +30,13 @@ func TestMain(m *testing.M) {
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
 		// Best-effort cleanup — nothing to report to.
-		os.RemoveAll(tmp)
+		_ = os.RemoveAll(tmp)
 		panic("building floe binary: " + err.Error())
 	}
 
 	code := m.Run()
 	// Best-effort cleanup — nothing to report to.
-	os.RemoveAll(tmp)
+	_ = os.RemoveAll(tmp)
 	os.Exit(code)
 }
 
