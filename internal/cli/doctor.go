@@ -96,13 +96,20 @@ func lastScheduledFailure() (when time.Time, failed bool) {
 			when, failed = at, true
 		}
 	}
-	// `floe init` rewrites the plist: a failure from before that reinstall says nothing about the new schedule.
-	if pp, err := launchd.PlistPath(); err == nil {
-		if info, err := os.Stat(pp); err == nil && info.ModTime().After(when) {
-			return time.Time{}, false
-		}
+	if failed && scheduleInstalledAfter(when) {
+		return time.Time{}, false
 	}
 	return when, failed
+}
+
+// `floe init` rewrites the plist: a report from before that reinstall says nothing about the new schedule.
+func scheduleInstalledAfter(t time.Time) bool {
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(pp)
+	return err == nil && info.ModTime().After(t)
 }
 
 type check struct {
@@ -191,6 +198,9 @@ func newDoctorCmd(d Deps) *cobra.Command {
 							return true, false, "complete"
 						}
 						return true, false, "unknown"
+					}
+					if scheduleInstalledAfter(when) {
+						return true, false, "complete"
 					}
 					bin, err := os.Executable()
 					if err != nil {

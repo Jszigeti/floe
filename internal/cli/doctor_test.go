@@ -643,3 +643,40 @@ func TestLastScheduledFailureIgnoresFailuresBeforeReinstall(t *testing.T) {
 		t.Fatal("a failure older than the installed schedule must not count")
 	}
 }
+
+func TestDoctorIgnoresIncompleteReportBeforeReinstall(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	logPath, err := backup.IncompleteLogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, []byte("a\nb\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(logPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+	pp, err := launchd.PlistPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(pp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pp, []byte("FLOE_SCHEDULED"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	_ = cmd.Execute() // the verdict under test is the line below, not doctor's overall exit
+	if s := out.String(); strings.Contains(s, "skipped 3 protected files") {
+		t.Fatalf("a report older than the installed schedule must not count:\n%s", s)
+	}
+}
