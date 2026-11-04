@@ -8,7 +8,7 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 - Scheduled backups failed every day once macOS had moved some of the repository's files to iCloud to free disk space, with `resource deadlock avoided`, while a manual `floe backup` worked. macOS starts scheduled jobs with downloads of those files turned off. floe now turns them on for itself, and restic inherits it.
 - The system manifest of scheduled runs missed the Homebrew `Brewfile` and the App Store app list: the schedule's PATH did not include Homebrew. Re-run `floe init` to update an existing schedule.
-- A failed backup alert now says to run `floe doctor`.
+- A failed backup alert now says to run `floe doctor`, and `floe doctor` reports a failed last scheduled backup instead of calling it complete.
 
 ### Changed
 
