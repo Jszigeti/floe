@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/backup"
 	"github.com/Jszigeti/floe/internal/config"
@@ -563,5 +564,64 @@ func TestDoctorWarnsWhenDatalessScanFails(t *testing.T) {
 	}
 	if !strings.Contains(s, "!") {
 		t.Fatalf("doctor output missing warn marker:\n%s", s)
+	}
+}
+
+func writeScheduledLog(t *testing.T, content string) {
+	t.Helper()
+	p, err := launchd.LogPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLastScheduledFailure(t *testing.T) {
+	cases := []struct {
+		name       string
+		log        string
+		wantFailed bool
+		wantWhen   string
+	}{
+		{"no log", "", false, ""},
+		{"last run finished", "2026-09-19T13:00:01+02:00 backup started\n2026-09-19T13:05:00+02:00 backup finished\n", false, ""},
+		{"last run failed", "2026-09-19T13:05:00+02:00 backup finished\n2026-09-20T13:06:32+02:00 backup failed: restic: exit status 10: repository does not exist\nIs there a repository at the following location?\n", true, "2026-09-20T13:06:32+02:00"},
+		{"failure then success", "2026-09-20T13:06:32+02:00 backup failed: boom\n2026-09-21T13:04:00+02:00 backup finished\n", false, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			if c.log != "" {
+				writeScheduledLog(t, c.log)
+			}
+			when, failed := lastScheduledFailure()
+			if failed != c.wantFailed {
+				t.Fatalf("failed = %v, want %v", failed, c.wantFailed)
+			}
+			if c.wantFailed && when.Format(time.RFC3339) != c.wantWhen {
+				t.Fatalf("when = %s, want %s", when.Format(time.RFC3339), c.wantWhen)
+			}
+		})
+	}
+}
+
+func TestDoctorFailsWhenLastScheduledBackupFailed(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	writeScheduledLog(t, "2026-09-20T13:06:32+02:00 backup failed: boom\n")
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("a failed scheduled backup must fail doctor:\n%s", out.String())
+	}
+	if s := out.String(); !strings.Contains(s, "failed on 2026-09-20 1:06 PM") {
+		t.Fatalf("doctor output missing the failed scheduled run:\n%s", s)
 	}
 }

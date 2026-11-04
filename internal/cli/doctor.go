@@ -73,6 +73,32 @@ func lastIncompleteReport() (count int, when time.Time, err error) {
 	return count, info.ModTime(), nil
 }
 
+// floe.log only receives scheduled runs: the LaunchAgent redirects into it, a manual run prints to the terminal.
+func lastScheduledFailure() (when time.Time, failed bool) {
+	p, err := launchd.LogPath()
+	if err != nil {
+		return time.Time{}, false
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return time.Time{}, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		stamp, event, _ := strings.Cut(line, " ")
+		at, err := time.Parse(time.RFC3339, stamp)
+		if err != nil {
+			continue
+		}
+		if event == "backup finished" {
+			failed = false
+		}
+		if strings.HasPrefix(event, "backup failed") {
+			when, failed = at, true
+		}
+	}
+	return when, failed
+}
+
 type check struct {
 	name string
 	run  func(ctx context.Context) (ok bool, warn bool, msg string)
@@ -149,6 +175,10 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					return interpretFDAProbe(err)
 				}},
 				{"last scheduled backup", func(ctx context.Context) (bool, bool, string) {
+					if when, failed := lastScheduledFailure(); failed {
+						logPath, _ := launchd.LogPath() // lastScheduledFailure already resolved it
+						return false, false, fmt.Sprintf("failed on %s — see %s", when.Format("2006-01-02 3:04 PM"), logPath)
+					}
 					count, when, err := lastIncompleteReport()
 					if err != nil {
 						if errors.Is(err, fs.ErrNotExist) {
