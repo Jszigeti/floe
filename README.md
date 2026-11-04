@@ -36,7 +36,7 @@ Piping curl into sh deserves a look first: [install.sh](install.sh) is 34 lines.
 go install github.com/Jszigeti/floe/cmd/floe@latest
 ```
 
-Works on Apple Silicon and Intel Macs. floe downloads its own restic binary (pinned version, sha256 verified), so there is nothing else to install.
+Works on Apple Silicon and Intel Macs. Building from source needs the Xcode Command Line Tools (`xcode-select --install`), which git and Homebrew already require. floe downloads its own restic binary (pinned version, sha256 verified), so there is nothing else to install.
 
 ## Quickstart
 
