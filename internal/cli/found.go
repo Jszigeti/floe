@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/config"
@@ -83,15 +84,18 @@ func findBackups(dest string) ([]foundBackup, error) {
 }
 
 // lastSnapshot is the newest modification time in repo/snapshots, zero when it holds none.
+// Hidden files, a Finder .DS_Store for one, are not snapshots.
 func lastSnapshot(repo string) time.Time {
-	dir := filepath.Join(repo, "snapshots")
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(filepath.Join(repo, "snapshots"))
 	if err != nil {
 		return time.Time{}
 	}
 	var last time.Time
 	for _, e := range entries {
-		if info, err := os.Stat(filepath.Join(dir, e.Name())); err == nil && info.ModTime().After(last) {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().After(last) {
 			last = info.ModTime()
 		}
 	}

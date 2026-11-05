@@ -144,6 +144,13 @@ func TestFindBackupsNewestFirst(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dest, "Floe.backup", "Empty"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	finderOnly := filepath.Join(dest, "Floe.backup", "Finder-Only", "snapshots")
+	if err := os.MkdirAll(finderOnly, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(finderOnly, ".DS_Store"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	found, err := findBackups(dest)
 	if err != nil || len(found) != 2 || found[0].Name != "Air" || found[1].Name != "Old-Mac" {
 		t.Fatalf("findBackups = %+v, %v", found, err)
