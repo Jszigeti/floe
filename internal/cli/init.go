@@ -53,7 +53,11 @@ func newInitCmd(d Deps) *cobra.Command {
 					return err
 				}
 				if len(found) > 0 {
-					b, replace, err := chooseBackup(p, found, time.Now())
+					name, err := config.MachineName()
+					if err != nil {
+						return err
+					}
+					b, replace, err := chooseBackup(p, found, name, time.Now())
 					if err != nil {
 						return err
 					}

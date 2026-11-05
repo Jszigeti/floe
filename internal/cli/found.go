@@ -102,8 +102,9 @@ func lastSnapshot(repo string) time.Time {
 	return last
 }
 
-// chooseBackup asks whether this Mac replaces one of found, newest first; false adds it alongside.
-func chooseBackup(p prompter, found []foundBackup, now time.Time) (foundBackup, bool, error) {
+// chooseBackup asks whether this Mac, named mac, replaces one of found, newest first; false
+// adds it alongside.
+func chooseBackup(p prompter, found []foundBackup, mac string, now time.Time) (foundBackup, bool, error) {
 	alongside := len(found) + 1
 	if len(found) == 1 {
 		b := found[0]
@@ -118,7 +119,9 @@ func chooseBackup(p prompter, found []foundBackup, now time.Time) (foundBackup, 
 		p.cmd.Printf("  %d. Add this Mac alongside: new backup, the others keep their own\n", alongside)
 	}
 	def := alongside
-	if now.Sub(found[0].LastSaved) > recentlySaved {
+	// A folder named after this Mac is most likely its own backup, after its config was deleted:
+	// Enter must never restore an old snapshot over newer files.
+	if now.Sub(found[0].LastSaved) > recentlySaved && found[0].Name != mac {
 		def = 1
 	}
 	n, err := strconv.Atoi(p.ask("Choice", strconv.Itoa(def)))

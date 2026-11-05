@@ -171,22 +171,25 @@ func TestChooseBackup(t *testing.T) {
 	now := time.Now()
 	cases := []struct {
 		name        string
+		mac         string
 		age         time.Duration
 		stdin       string
 		wantReplace bool
 		wantErr     bool
 	}{
-		{"an old backup defaults to replace", 10 * 24 * time.Hour, "\n", true, false},
-		{"a recent backup defaults to alongside", time.Hour, "\n", false, false},
-		{"replacing a recent backup once the other Mac is stopped", time.Hour, "1\ny\n", true, false},
-		{"replacing a recent backup stops otherwise", time.Hour, "1\n\n", false, true},
-		{"a choice out of range", time.Hour, "7\n", false, true},
+		{"an old backup defaults to replace", "Pro", 10 * 24 * time.Hour, "\n", true, false},
+		{"an old backup named after this Mac defaults to alongside", "Air", 10 * 24 * time.Hour, "\n", false, false},
+		{"an old backup named after this Mac can still be replaced", "Air", 10 * 24 * time.Hour, "1\n", true, false},
+		{"a recent backup defaults to alongside", "Pro", time.Hour, "\n", false, false},
+		{"replacing a recent backup once the other Mac is stopped", "Pro", time.Hour, "1\ny\n", true, false},
+		{"replacing a recent backup stops otherwise", "Pro", time.Hour, "1\n\n", false, true},
+		{"a choice out of range", "Pro", time.Hour, "7\n", false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p, out := testPrompter(tc.stdin)
 			found := []foundBackup{{Name: "Air", Path: "/d/Floe.backup/Air", LastSaved: now.Add(-tc.age)}}
-			b, replace, err := chooseBackup(p, found, now)
+			b, replace, err := chooseBackup(p, found, tc.mac, now)
 			if (err != nil) != tc.wantErr || replace != tc.wantReplace || (replace && b.Name != "Air") {
 				t.Fatalf("chooseBackup = %+v, %v, %v\n%s", b, replace, err, out)
 			}
@@ -204,7 +207,7 @@ func TestChooseBackupListsEveryBackup(t *testing.T) {
 		{Name: "Air", LastSaved: now.Add(-3 * 24 * time.Hour)},
 		{Name: "Old-Mac", LastSaved: now.Add(-30 * 24 * time.Hour)},
 	}
-	b, replace, err := chooseBackup(p, found, now)
+	b, replace, err := chooseBackup(p, found, "Pro", now)
 	if err != nil || !replace || b.Name != "Old-Mac" {
 		t.Fatalf("chooseBackup = %+v, %v, %v", b, replace, err)
 	}
