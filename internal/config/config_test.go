@@ -313,7 +313,7 @@ func TestRehomeMovesEveryPathUnderTheOldHome(t *testing.T) {
 		Hour:        9,
 		Scope: Scope{
 			Paths:   []string{"/Users/alice"},
-			Exclude: []string{"/Users/alice/Library/Caches", "node_modules", "/Users/alice2/x"},
+			Exclude: []string{"/Users/alice/Library/Caches", "node_modules", "/Users/alice2/x", "/Users/alice-work/y", "/Users/alice.old"},
 		},
 		Hooks: Hooks{Pre: []string{"sh /Users/alice/bin/export.sh /Users/alice/out"}},
 	}
@@ -322,7 +322,7 @@ func TestRehomeMovesEveryPathUnderTheOldHome(t *testing.T) {
 		Hour:        9,
 		Scope: Scope{
 			Paths:   []string{"/Users/bob"},
-			Exclude: []string{"/Users/bob/Library/Caches", "node_modules", "/Users/alice2/x"},
+			Exclude: []string{"/Users/bob/Library/Caches", "node_modules", "/Users/alice2/x", "/Users/alice-work/y", "/Users/alice.old"},
 		},
 		Hooks: Hooks{Pre: []string{"sh /Users/bob/bin/export.sh /Users/bob/out"}},
 	}

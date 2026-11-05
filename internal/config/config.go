@@ -218,17 +218,21 @@ func Parse(data string) (Config, error) {
 }
 
 // Rehome moves every path under oldHome to newHome, so a config taken from another account
-// points at this one. \b keeps /Users/alice2 out of a move from /Users/alice.
+// points at this one. The character after oldHome must end a name, which keeps /Users/alice2,
+// /Users/alice-work and /Users/alice.old out of a move from /Users/alice.
 func (c Config) Rehome(oldHome, newHome string) Config {
-	re := regexp.MustCompile(regexp.QuoteMeta(oldHome) + `\b`)
+	re := regexp.MustCompile(regexp.QuoteMeta(oldHome) + `([^\w.-]|$)`)
+	rehome := func(s string) string {
+		return re.ReplaceAllStringFunc(s, func(m string) string { return newHome + m[len(oldHome):] })
+	}
 	move := func(list []string) []string {
 		out := slices.Clone(list)
 		for i := range out {
-			out[i] = re.ReplaceAllLiteralString(out[i], newHome)
+			out[i] = rehome(out[i])
 		}
 		return out
 	}
-	c.Destination = re.ReplaceAllLiteralString(c.Destination, newHome)
+	c.Destination = rehome(c.Destination)
 	c.Scope.Paths = move(c.Scope.Paths)
 	c.Scope.Exclude = move(c.Scope.Exclude)
 	c.Hooks.Pre = move(c.Hooks.Pre)
