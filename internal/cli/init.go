@@ -180,11 +180,7 @@ func normalizeDestination(input string) (string, error) {
 }
 
 func initRepoAndConfig(ctx context.Context, d Deps, cfg config.Config, bin, pass string, progress io.Writer) (*restic.Client, config.Config, error) {
-	repo, err := cfg.RepoPath()
-	if err != nil {
-		return nil, cfg, err
-	}
-	cfg.Repo = repo
+	repo := cfg.Repo
 	if err := os.MkdirAll(repo, 0o755); err != nil {
 		return nil, cfg, err
 	}

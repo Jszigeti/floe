@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -326,16 +327,16 @@ func TestInitFailsWhenRepoDirCannotBeCreated(t *testing.T) {
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Block dest/Floe.backup with a regular file so os.MkdirAll(repo, ...) fails.
-	if err := os.WriteFile(filepath.Join(dest, "Floe.backup"), []byte("x"), 0o644); err != nil {
+	// A read-only dest/Floe.backup lets init list it but makes os.MkdirAll(repo, ...) fail.
+	if err := os.MkdirAll(filepath.Join(dest, "Floe.backup"), 0o555); err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := Root(Deps{Version: "t", Runner: f})
 	cmd.SetIn(strings.NewReader(dest + "\n\n\n"))
 	cmd.SetArgs([]string{"init"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("want error when the repo dir cannot be created")
+	if err := cmd.Execute(); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("err = %v, want the repo dir's permission error", err)
 	}
 }
 

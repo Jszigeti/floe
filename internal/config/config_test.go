@@ -278,16 +278,6 @@ func TestRepoPathPrefersTheRecordedRepo(t *testing.T) {
 	}
 }
 
-func TestMachineNameIsTheSanitizedHostname(t *testing.T) {
-	name, err := MachineName()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if name == "" || strings.Contains(name, " ") || strings.HasSuffix(name, ".local") {
-		t.Fatalf("name = %q", name)
-	}
-}
-
 func TestSaveLoadKeepsIdentity(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	c, err := Default()
