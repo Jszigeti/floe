@@ -58,6 +58,15 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, "Library/Group Containers/group.com.apple.CoreSpeech/Caches"),
 		filepath.Join(home, "Library/Group Containers/group.com.apple.secure-control-center-preferences/Library/Preferences"),
 		filepath.Join(home, "Library/Biome"),
+		// macOS rebuilds these from the data they index or learn from, and they change every day.
+		filepath.Join(home, "Library/Metadata"),
+		filepath.Join(home, "Library/Daemon Containers"),
+		filepath.Join(home, "Library/IntelligencePlatform"),
+		filepath.Join(home, "Library/DuetExpertCenter"),
+		filepath.Join(home, "Library/Trial"),
+		filepath.Join(home, "Library/Suggestions"),
+		// Photos shared with you in Messages, synced back by iCloud.
+		filepath.Join(home, "Library/Photos/Libraries/Syndication.photoslibrary"),
 		filepath.Join(home, "Library/Saved Application State"),
 		filepath.Join(home, "Library/HTTPStorages"),
 		filepath.Join(home, "Library/Android"),
@@ -79,6 +88,9 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, "Library/Application Support/Google/GoogleUpdater"),
 		filepath.Join(home, "Library/Application Support/Steam/steamapps/downloading"),
 		filepath.Join(home, "Library/Application Support/Steam/steamapps/shadercache"),
+		// Installed games and app builds their launcher downloads again; saves live elsewhere.
+		filepath.Join(home, "Library/Application Support/Steam/steamapps/common"),
+		filepath.Join(home, "Library/Application Support/discord/app-*"),
 		filepath.Join(home, "miniconda3"),
 		filepath.Join(home, "anaconda3"),
 		filepath.Join(home, ".yarn/berry/cache"),
@@ -98,6 +110,8 @@ func DefaultExcludes(home string) []string {
 		".terraform",
 		"state.vscdb.backup",
 		"Crashpad",
+		// Every sandboxed app's own cache folder, ~/Library/Containers/<app>/Data/Library/Caches.
+		"Library/Caches",
 		// Chromium/Electron cache conventions (Chrome, Discord, Claude, Slack…).
 		"Cache",
 		"Code Cache",
