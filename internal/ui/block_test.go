@@ -138,6 +138,45 @@ func TestBlockStopShowsCursor(t *testing.T) {
 	}
 }
 
+// A signal ends floe before Stop runs, so the handler shows the cursor while the block is live.
+func TestBlockSignalShowsCursor(t *testing.T) {
+	var cleanup func()
+	removed, writesAtRemoval := 0, 0
+	on := onSignal
+	rec := &recorder{}
+	onSignal = func(f func()) func() {
+		cleanup = f
+		return func() {
+			removed++
+			writesAtRemoval = len(rec.snapshot())
+		}
+	}
+	t.Cleanup(func() { onSignal = on })
+	plain := NewBlock(&bytes.Buffer{}, false, fixedNow)
+	plain.Start(context.Background())
+	if cleanup != nil {
+		t.Fatal("a plain block hides no cursor: nothing to show on a signal")
+	}
+
+	b := NewBlock(rec, true, fixedNow)
+	b.Set(0, "Restoring files")
+	b.Start(context.Background())
+	if cleanup == nil {
+		t.Fatal("a live block must show the cursor on a signal")
+	}
+	cleanup()
+	if out := rec.all(); !strings.HasSuffix(out, "\x1b[?25h") {
+		t.Errorf("the signal cleanup does not show the cursor: %q", out)
+	}
+	b.Stop()
+	if removed != 1 {
+		t.Errorf("Stop must drop the signal cleanup once, dropped %d times", removed)
+	}
+	if writes := rec.snapshot(); writesAtRemoval != len(writes) || !strings.HasSuffix(writes[len(writes)-1], "\x1b[?25h") {
+		t.Errorf("Stop must show the cursor before it drops the signal cleanup: %q", writes)
+	}
+}
+
 func TestBlockContextCancelShowsCursor(t *testing.T) {
 	rec := &recorder{}
 	b := NewBlock(rec, true, fixedNow)
@@ -209,6 +248,31 @@ func TestBlockPauseClearsAndResumes(t *testing.T) {
 	}
 	if len(writes) != len(cleared)+2 {
 		t.Errorf("resume twice drew %d frames, want 1 then the final one", len(writes)-len(cleared))
+	}
+}
+
+// A line set to empty leaves the screen, so a summary can follow the block without it.
+func TestBlockEmptyLineIsNotDrawn(t *testing.T) {
+	rec := &recorder{}
+	b := NewBlock(rec, true, fixedNow)
+	b.Set(0, "Restoring files")
+	b.Set(1, "Installing apps")
+	b.Start(context.Background())
+	b.Set(0, "")
+	b.Set(1, "")
+	b.Stop()
+
+	writes := rec.snapshot()
+	if last := writes[len(writes)-1]; last != "\x1b[2A\x1b[J\x1b[?25h" {
+		t.Errorf("final frame = %q, want back up over both lines, erased, cursor shown", last)
+	}
+
+	var out bytes.Buffer
+	plain := NewBlock(&out, false, fixedNow)
+	plain.Set(0, "Restoring files")
+	plain.Set(0, "")
+	if out.String() != "Restoring files\n" {
+		t.Errorf("plain output = %q, want no empty line", out.String())
 	}
 }
 

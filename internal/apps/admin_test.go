@@ -9,9 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/Jszigeti/floe/internal/askpass"
 	"github.com/Jszigeti/floe/internal/run"
@@ -183,37 +181,36 @@ func TestStartAdminWrapsAnyOtherFailure(t *testing.T) {
 	}
 }
 
-// fakeSignals replaces the process signals with sigs and records what Admin raises again.
-func fakeSignals(t *testing.T) (sigs, raised chan os.Signal, stopped *atomic.Bool) {
+// fakeSignals stands in for floe's signal handler: it keeps the cleanup Admin registers, which
+// the test runs as a signal would, and tells when Admin removed it.
+func fakeSignals(t *testing.T) (cleanup *func(), removed *atomic.Bool) {
 	t.Helper()
-	sigs, raised, stopped = make(chan os.Signal, 1), make(chan os.Signal, 1), &atomic.Bool{}
-	watch, re := watchSignals, raise
-	watchSignals = func() (<-chan os.Signal, func()) { return sigs, func() { stopped.Store(true) } }
-	raise = func(s os.Signal) { raised <- s }
-	t.Cleanup(func() { watchSignals, raise = watch, re })
-	return sigs, raised, stopped
+	cleanup, removed = new(func()), &atomic.Bool{}
+	on := onSignal
+	onSignal = func(f func()) func() {
+		*cleanup = f
+		return func() { removed.Store(true) }
+	}
+	t.Cleanup(func() { onSignal = on })
+	return cleanup, removed
 }
 
-func TestAnInterruptClosesTheAdminThenEndsFloe(t *testing.T) {
-	sigs, raised, stopped := fakeSignals(t)
+func TestAnInterruptClosesTheAdmin(t *testing.T) {
+	cleanup, removed := fakeSignals(t)
 	f := sudoFake(t, "pw")
 	a, err := StartAdmin(context.Background(), f, "pw")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	sigs <- syscall.SIGINT
-
-	select {
-	case s := <-raised:
-		if s != syscall.SIGINT {
-			t.Fatalf("raised %v, want the same signal", s)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("the signal must be raised again so floe still ends")
+	if *cleanup == nil || removed.Load() {
+		t.Fatal("a running admin must be closed by a signal")
 	}
-	if _, err := os.Stat(a.dir); !os.IsNotExist(err) || !stopped.Load() {
-		t.Fatalf("the signal must close the admin and stop watching: %v, stopped %v", err, stopped.Load())
+
+	(*cleanup)()
+
+	// The handler has dropped every cleanup already: the admin has none left to drop.
+	if _, err := os.Stat(a.dir); !os.IsNotExist(err) {
+		t.Fatalf("the signal must close the admin: %v", err)
 	}
 	if !slices.Equal(callArgs(f), []string{"sudo -k", "sudo -A -v", "sudo -k"}) {
 		t.Fatalf("the signal must drop the admin rights: %q", callArgs(f))
@@ -224,25 +221,60 @@ func TestAnInterruptClosesTheAdminThenEndsFloe(t *testing.T) {
 	}
 }
 
-func TestCloseStopsWatchingSignals(t *testing.T) {
-	_, raised, stopped := fakeSignals(t)
-	a, err := StartAdmin(context.Background(), sudoFake(t, "pw"), "pw")
+// Close drops its cleanup last, so a Ctrl-C during the close waits for it to drop the rights.
+func TestCloseDropsTheSignalCleanupLast(t *testing.T) {
+	f := sudoFake(t, "pw")
+	var a *Admin
+	var atRemoval []string
+	dirLeft := true
+	on := onSignal
+	onSignal = func(func()) func() {
+		return func() {
+			atRemoval = callArgs(f)
+			_, err := os.Stat(a.dir)
+			dirLeft = err == nil
+		}
+	}
+	t.Cleanup(func() { onSignal = on })
+	a, err := StartAdmin(context.Background(), f, "pw")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	a.Close()
 
-	deadline := time.Now().Add(2 * time.Second)
-	for !stopped.Load() {
-		if time.Now().After(deadline) {
-			t.Fatal("Close must stop watching signals")
-		}
-		time.Sleep(time.Millisecond)
+	if atRemoval == nil {
+		t.Fatal("Close must drop the signal cleanup")
 	}
-	if len(raised) != 0 {
-		t.Fatal("Close alone must raise nothing")
+	if dirLeft || !slices.Equal(atRemoval, []string{"sudo -k", "sudo -A -v", "sudo -k"}) {
+		t.Fatalf("the cleanup was dropped before the close ended: folder left %v, calls %q", dirLeft, atRemoval)
 	}
+}
+
+// A signal right after StartAdmin registers its cleanup closes the admin while StartAdmin goes
+// on: -race checks they share nothing unguarded.
+func TestASignalDuringStartAdmin(t *testing.T) {
+	closed := make(chan struct{})
+	on := onSignal
+	onSignal = func(cleanup func()) func() {
+		go func() {
+			cleanup()
+			close(closed)
+		}()
+		return func() {}
+	}
+	t.Cleanup(func() { onSignal = on })
+
+	a, err := StartAdmin(context.Background(), &run.Fake{}, "pw")
+	<-closed
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(a.dir); !os.IsNotExist(err) {
+		t.Fatalf("the signal must close the admin: %v", err)
+	}
+	a.Close()
 }
 
 func TestRefreshRevalidatesThroughAskpass(t *testing.T) {

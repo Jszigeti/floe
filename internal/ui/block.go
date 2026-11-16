@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Jszigeti/floe/internal/interrupt"
 )
 
 const (
@@ -18,6 +20,9 @@ const (
 	// doneColumn aligns the durations of Done lines, as in the spec's screen.
 	doneColumn = 49
 )
+
+// onSignal has floe's signal handler show the cursor again before Ctrl-C or a kill ends floe.
+var onSignal = interrupt.OnSignal
 
 var spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -36,6 +41,7 @@ type Block struct {
 	paused  bool
 	started bool
 	ended   bool
+	unwatch func() // drops the signal cleanup
 
 	halt     sync.Once
 	stop     chan struct{}
@@ -66,14 +72,14 @@ func (b *Block) Done(line string, d time.Duration) {
 	}
 }
 
-// Set replaces live line i. A line starting with a space carries no spinner.
+// Set replaces live line i. A line starting with a space carries no spinner; an empty one is not drawn.
 func (b *Block) Set(i int, line string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if i >= len(b.lines) {
 		b.lines = append(b.lines, make([]string, i+1-len(b.lines))...)
 	}
-	if b.live || b.lines[i] == line {
+	if b.live || b.lines[i] == line || line == "" {
 		b.lines[i] = line
 		return
 	}
@@ -106,7 +112,8 @@ func (b *Block) Pause() func() {
 	}
 }
 
-// Start hides the cursor and redraws every 0.5 s until Stop or ctx is done.
+// Start hides the cursor and redraws every 0.5 s until Stop or ctx is done. A signal that ends
+// floe meanwhile shows the cursor first.
 func (b *Block) Start(ctx context.Context) {
 	if !b.live {
 		return
@@ -117,6 +124,11 @@ func (b *Block) Start(ctx context.Context) {
 		return
 	}
 	b.started = true
+	b.unwatch = onSignal(func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.write(showCursor)
+	})
 	b.write(hideCursor + b.frame())
 	go b.loop(ctx)
 }
@@ -168,6 +180,10 @@ func (b *Block) end() {
 	}
 	b.ended = true
 	b.write(b.frame() + showCursor)
+	// After the write: a signal meanwhile waits for the lock, then shows the cursor once more.
+	if b.unwatch != nil {
+		b.unwatch()
+	}
 	b.lines = nil
 	b.drawn = 0
 }
@@ -176,7 +192,8 @@ func (b *Block) end() {
 func (b *Block) frame() string {
 	var s strings.Builder
 	if b.drawn > 0 {
-		fmt.Fprintf(&s, "\x1b[%dA", b.drawn)
+		// Back up, and erase what fewer lines than last time would leave below.
+		fmt.Fprintf(&s, "\x1b[%dA\x1b[J", b.drawn)
 	}
 	room := b.width() - 2
 	for _, line := range b.pending {
@@ -184,13 +201,17 @@ func (b *Block) frame() string {
 	}
 	b.pending = nil
 	spin := spinner[b.now().UnixNano()/int64(redraw)%int64(len(spinner))]
+	b.drawn = 0
 	for _, line := range b.lines {
-		if line != "" && !strings.HasPrefix(line, " ") {
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") {
 			line = spin + " " + line
 		}
 		s.WriteString(clearLine + cut(line, room) + "\n")
+		b.drawn++
 	}
-	b.drawn = len(b.lines)
 	return s.String()
 }
 

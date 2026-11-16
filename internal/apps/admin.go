@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/askpass"
+	"github.com/Jszigeti/floe/internal/interrupt"
 	"github.com/Jszigeti/floe/internal/run"
 )
 
@@ -42,19 +41,12 @@ type Admin struct {
 	password  []byte
 	served    chan struct{}
 	validated atomic.Bool
-	done      chan struct{}
+	unwatch   func()
 	closing   sync.Once
 }
 
-// watchSignals delivers the signals that end floe, until stop.
-var watchSignals = func() (<-chan os.Signal, func()) {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	return sigs, func() { signal.Stop(sigs) }
-}
-
-// raise sends s to floe again, so that once nothing catches it, it ends floe as it meant to.
-var raise = func(s os.Signal) { _ = syscall.Kill(os.Getpid(), s.(syscall.Signal)) }
+// onSignal has floe's signal handler close an Admin before Ctrl-C or a kill ends floe.
+var onSignal = interrupt.OnSignal
 
 // StartAdmin serves password on a private socket, then checks it with sudo. A refused password
 // returns ErrRefused, an account that may not use sudo ErrNotAdmin, both with everything closed.
@@ -67,7 +59,7 @@ func StartAdmin(ctx context.Context, r run.Runner, password string) (*Admin, err
 	if err != nil {
 		return nil, err
 	}
-	a := &Admin{r: r, dir: dir, password: []byte(password), served: make(chan struct{}), done: make(chan struct{})}
+	a := &Admin{r: r, dir: dir, password: []byte(password), served: make(chan struct{})}
 	socket := filepath.Join(dir, "socket")
 	script := fmt.Sprintf("#!/bin/sh\n%s=%s exec %s\n", askpass.SocketEnv, shellQuote(socket), shellQuote(exe))
 	if err := os.WriteFile(filepath.Join(dir, "askpass"), []byte(script), 0o700); err != nil {
@@ -79,7 +71,9 @@ func StartAdmin(ctx context.Context, r run.Runner, password string) (*Admin, err
 		return nil, err
 	}
 	go a.serve()
-	a.closeOnSignal()
+	// The handler gets close, not Close: it drops its cleanups itself, and close never reads
+	// unwatch, which a signal coming right now would race with.
+	a.unwatch = onSignal(a.close)
 	// A timestamp left by an earlier sudo would let a mistyped password through unchecked.
 	_, _ = r.Run(ctx, run.Cmd{Name: sudo, Args: []string{"-k"}})
 	if err := a.Refresh(ctx); err != nil {
@@ -125,21 +119,6 @@ func (a *Admin) serve() {
 	}
 }
 
-// closeOnSignal closes a before Ctrl-C or a kill ends floe, then lets the signal end it.
-func (a *Admin) closeOnSignal() {
-	sigs, stop := watchSignals()
-	go func() {
-		select {
-		case s := <-sigs:
-			a.Close()
-			stop()
-			raise(s)
-		case <-a.done:
-			stop()
-		}
-	}()
-}
-
 // Env is what every brew and mas command needs to reach the password, nil without an Admin.
 func (a *Admin) Env() []string {
 	if a == nil {
@@ -161,8 +140,16 @@ func (a *Admin) Close() {
 	if a == nil {
 		return
 	}
+	a.close()
+	// Last, so a signal during the close waits for it instead of ending floe with the rights on.
+	if a.unwatch != nil {
+		a.unwatch()
+	}
+}
+
+// close ends the admin rights once; a second caller waits for the first to finish.
+func (a *Admin) close() {
 	a.closing.Do(func() {
-		close(a.done)
 		// Best effort on every step: Close runs on the way out, with no one left to report to.
 		if a.listener != nil {
 			_ = a.listener.Close()
