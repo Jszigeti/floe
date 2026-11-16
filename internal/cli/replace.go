@@ -107,7 +107,10 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 		return err
 	}
 
-	rep := apps.Reinstall(ctx, apps.Deps{Runner: d.Runner, Out: p.cmd.OutOrStdout(), BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}, recipe)
+	rep, err := reinstallApps(ctx, p, d.Runner, recipe)
+	if err != nil {
+		return err
+	}
 	printAppsReport(p, rep)
 	if partial != nil {
 		p.cmd.Printf("! %d files could not be restored:\n", len(partial.Failed))
@@ -231,15 +234,71 @@ func takeOverConfig(ctx context.Context, p prompter, client *restic.Client, id, 
 	return old.Rehome(oldHome, home), nil
 }
 
+// reinstallApps installs the recipe's apps under one administrator password, naming each as it starts.
+func reinstallApps(ctx context.Context, p prompter, r run.Runner, recipe string) (apps.Report, error) {
+	plan, err := apps.PlanFrom(recipe, apps.ListedApps(recipe, nil))
+	if err != nil {
+		return apps.Report{}, fmt.Errorf("reading the app recipe: %w", err)
+	}
+	deps := apps.Deps{Runner: r, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
+	if plan.Brewfile != "" || plan.VSCode != "" || len(plan.Casks) > 0 || len(plan.StoreIDs) > 0 {
+		deps.Admin = startAdmin(ctx, p, r)
+		defer deps.Admin.Close()
+		p.cmd.Println("→ Installing your apps…")
+	}
+	current := ""
+	return apps.Install(ctx, deps, plan, func(pr apps.Progress) {
+		if pr.Current != "" && pr.Current != current {
+			current = pr.Current
+			p.cmd.Printf("  %d of %d  %s\n", pr.Done, pr.Total, current)
+		}
+	}), nil
+}
+
+// startAdmin asks for the administrator password, three tries at most, so Homebrew and mas never
+// prompt mid-run. nil when the user gives none, sudo refuses it or the account is no administrator:
+// the run goes on without.
+func startAdmin(ctx context.Context, p prompter, r run.Runner) *apps.Admin {
+	for try := range 3 {
+		if try > 0 {
+			p.cmd.Println("This password was refused, try again.")
+		}
+		password, ok := p.secret("Administrator password (to install your apps)")
+		if !ok || password == "" {
+			break
+		}
+		admin, err := apps.StartAdmin(ctx, r, password)
+		if err == nil {
+			return admin
+		}
+		if errors.Is(err, apps.ErrNotAdmin) {
+			p.cmd.Println("! This account is not an administrator: the apps that need it may ask for an administrator later.")
+			return nil
+		}
+		if !errors.Is(err, apps.ErrRefused) {
+			p.cmd.Printf("! Cannot hand the password to the installers: %v\n", err)
+			break
+		}
+	}
+	p.cmd.Println("! Going on without it: the apps that need it may ask for your password later.")
+	return nil
+}
+
 // printAppsReport lists what the apps step left to do by hand.
 func printAppsReport(p prompter, rep apps.Report) {
 	if len(rep.BrewFailed) > 0 {
 		p.cmd.Printf("! Homebrew could not install: %s\n", strings.Join(rep.BrewFailed, ", "))
 	}
+	for _, n := range rep.Notes {
+		p.cmd.Printf("! %s\n", n)
+	}
 	if len(rep.Missing) > 0 {
 		p.cmd.Printf("! Reinstall these apps by hand: %s\n", strings.Join(rep.Missing, ", "))
 	}
 	for _, c := range rep.Commands {
+		if len(rep.StoreFailed) > 0 && c == "mas install "+strings.Join(rep.StoreFailed, " ") {
+			p.cmd.Println("! Some App Store apps did not install. If the App Store is signed out, sign in to it, then run the command below.")
+		}
 		p.cmd.Printf("! Run later: %s\n", c)
 	}
 }

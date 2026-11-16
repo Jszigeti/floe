@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jszigeti/floe/internal/apps"
+	"github.com/Jszigeti/floe/internal/askpass"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/run"
@@ -272,31 +275,122 @@ func TestReplaceListsFailedFilesAndGoesOn(t *testing.T) {
 }
 
 func TestReplaceReinstallsAppsAfterTheRestore(t *testing.T) {
-	home, dest, _ := startReplace(t)
+	f, dest, _ := appsReplace(t, "")
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	restoreAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool { return len(c.Args) > 0 && c.Args[0] == "restore" })
+	bundleAt := slices.IndexFunc(f.Calls, isBundle)
+	if restoreAt < 0 || bundleAt < restoreAt {
+		t.Fatalf("brew bundle must run after the restore: restore at %d, bundle at %d", restoreAt, bundleAt)
+	}
+}
+
+func TestReplaceStopsAskingWhenTheAccountIsNotAnAdmin(t *testing.T) {
+	f, dest, calls := appsReplace(t, "s3cret")
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if filepath.Base(c.Name) == "sudo" && slices.Contains(c.Args, "-A") {
+			return "", errors.New("sudo [-A -v]: exit status 1: jonas is not in the sudoers file.")
+		}
+		return base(c)
+	}
+	out, err := runInit(f, dest+"\n\npw\ns3cret\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	got := calls()
+	if len(got) != 4 || got[0] != "sudo -k " || !strings.HasPrefix(got[1], "sudo -A ") || got[3] != "brew bundle " {
+		t.Fatalf("calls = %q, want the old timestamp dropped, one check, then brew without the password", got)
+	}
+	if strings.Contains(out, "refused") || !strings.Contains(out, "! This account is not an administrator: the apps that need it may ask for an administrator later.") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+// appsReplace is a Replace whose recipe installs jq with brew, and whose sudo accepts only
+// password, read from the socket floe serves. calls lists its admin and brew bundle calls.
+func appsReplace(t *testing.T, password string) (*run.Fake, string, func() []string) {
+	t.Helper()
+	_, dest, _ := startReplace(t)
 	bin := t.TempDir()
-	brew := filepath.Join(bin, "brew")
-	if err := os.WriteFile(brew, []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "brew"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
 	f := replaceFake(nil, "1000")
 	base := f.Handler
 	f.Handler = func(c run.Cmd) (string, error) {
-		if len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/Brewfile") {
+		switch {
+		case len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/Brewfile"):
 			return "brew \"jq\"\n", nil
+		case filepath.Base(c.Name) == "sudo" && slices.Contains(c.Args, "-A"):
+			program, _ := strings.CutPrefix(c.Env[0], "SUDO_ASKPASS=")
+			var got bytes.Buffer
+			if err := askpass.Answer(filepath.Join(filepath.Dir(program), "socket"), &got); err != nil || got.String() != password+"\n" {
+				return "", errors.New("Sorry, try again.")
+			}
 		}
 		return base(c)
 	}
-	out, err := runInit(f, dest+"\n\npw\n")
+	return f, dest, func() []string {
+		var calls []string
+		for _, c := range f.Calls {
+			if filepath.Base(c.Name) == "sudo" || isBundle(c) {
+				calls = append(calls, filepath.Base(c.Name)+" "+c.Args[0]+" "+strings.Join(c.Env, " "))
+			}
+		}
+		return calls
+	}
+}
+
+func isBundle(c run.Cmd) bool {
+	return filepath.Base(c.Name) == "brew" && len(c.Args) > 0 && c.Args[0] == "bundle"
+}
+
+func TestReplaceGivesTheAdminPasswordToTheApps(t *testing.T) {
+	f, dest, calls := appsReplace(t, "s3cret")
+	out, err := runInit(f, dest+"\n\npw\ns3cret\n")
 	if err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
-	brewfile := filepath.Join(home, ".local/state/floe/recipe/Brewfile")
-	restoreAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool { return len(c.Args) > 0 && c.Args[0] == "restore" })
-	bundleAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool {
-		return c.Name == brew && slices.Equal(c.Args, []string{"bundle", "install", "--file", brewfile})
+	if !strings.Contains(out, "Administrator password (to install your apps): ") {
+		t.Fatalf("no password prompt:\n%s", out)
+	}
+	got := calls()
+	if len(got) != 4 || got[0] != "sudo -k " || !strings.HasPrefix(got[1], "sudo -A SUDO_ASKPASS=") || !strings.HasPrefix(got[2], "brew bundle SUDO_ASKPASS=") || got[3] != "sudo -k " {
+		t.Fatalf("calls = %q, want the old timestamp dropped, the password checked, given to brew, then dropped", got)
+	}
+}
+
+func TestPrintAppsReportSaysWhyAppsAreLeft(t *testing.T) {
+	p, out := testPrompter("")
+	printAppsReport(p, apps.Report{
+		StoreFailed: []string{"111", "222"},
+		Notes:       []string{"Homebrew needs an administrator password"},
+		Commands:    []string{apps.HomebrewInstall, "mas install 111 222"},
 	})
-	if restoreAt < 0 || bundleAt < restoreAt {
-		t.Fatalf("brew bundle must run after the restore: restore at %d, bundle at %d", restoreAt, bundleAt)
+	want := "! Homebrew needs an administrator password\n" +
+		"! Run later: " + apps.HomebrewInstall + "\n" +
+		"! Some App Store apps did not install. If the App Store is signed out, sign in to it, then run the command below.\n" +
+		"! Run later: mas install 111 222\n"
+	if out.String() != want {
+		t.Fatalf("report:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestReplaceGoesOnWithoutAdminAfterThreeRefusals(t *testing.T) {
+	f, dest, calls := appsReplace(t, "s3cret")
+	out, err := runInit(f, dest+"\n\npw\na\nb\nc\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	got := calls()
+	if len(got) != 10 || got[9] != "brew bundle " {
+		t.Fatalf("calls = %q, want three refusals then brew without the password", got)
+	}
+	if strings.Count(out, "This password was refused") != 2 || !strings.Contains(out, "may ask for your password later") {
+		t.Fatalf("output:\n%s", out)
 	}
 }

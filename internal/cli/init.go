@@ -18,6 +18,7 @@ import (
 	"github.com/Jszigeti/floe/internal/notify"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/scan"
+	"github.com/Jszigeti/floe/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -220,6 +221,21 @@ func (p prompter) ask(prompt, def string) string {
 		}
 	}
 	return def
+}
+
+// secret asks for a line the terminal does not echo; false when the input is closed. Off a
+// terminal it reads through the scanner, which may already hold the line.
+func (p prompter) secret(prompt string) (string, bool) {
+	p.cmd.Printf("%s: ", prompt)
+	if f, ok := p.cmd.InOrStdin().(*os.File); ok && ui.IsTerminal(f) {
+		s, err := ui.ReadSecret(f)
+		p.cmd.Println()
+		return s, err == nil
+	}
+	if !p.in.Scan() {
+		return "", false
+	}
+	return p.in.Text(), true
 }
 
 // confirm waits for Enter; q or a closed input is false, so a wait never loops on a piped stdin.
