@@ -1,0 +1,109 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Jszigeti/floe/internal/apps"
+	"github.com/Jszigeti/floe/internal/inventory"
+	"github.com/Jszigeti/floe/internal/replace"
+	"github.com/Jszigeti/floe/internal/run"
+)
+
+// inventoryOf reads the app inventory the backup carries. A backup made before it existed only
+// lists its apps, which are matched against Homebrew's cask list on this Mac.
+func inventoryOf(ctx context.Context, recipe, caskURL, home string) ([]inventory.App, error) {
+	list, err := inventory.Read(filepath.Join(recipe, "apps.json"))
+	if err == nil {
+		return list, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("reading the app inventory: %w", err)
+	}
+	// A cache that cannot be saved still gives the list.
+	casks, _ := inventory.LoadCasks(ctx, filepath.Join(home, ".local/state/floe/cask.json"), caskURL, 7*24*time.Hour, time.Now())
+	return apps.ListedApps(recipe, casks), nil
+}
+
+// appsSize is what the apps to install take on disk.
+func appsSize(list []inventory.App) int64 {
+	var size int64
+	for _, a := range list {
+		if a.Source == inventory.SourceAppStore || a.Source == inventory.SourceCask || a.Source == inventory.SourceBackup {
+			size += a.Size
+		}
+	}
+	return size
+}
+
+// readFlag reads a true/false flag of the recipe; a backup made before it existed says false.
+func readFlag(recipe, name string) bool {
+	data, err := os.ReadFile(filepath.Join(recipe, name))
+	return err == nil && strings.TrimSpace(string(data)) == "true"
+}
+
+// askForPower has a MacBook on battery plugged in, since a flat battery or a closed lid would cut the run.
+func askForPower(ctx context.Context, p prompter, r run.Runner) {
+	out, err := r.Run(ctx, run.Cmd{Name: "pmset", Args: []string{"-g", "batt"}})
+	if err != nil || !strings.Contains(out, "Battery Power") {
+		return
+	}
+	p.cmd.Println("This Mac runs on battery: plug it in and keep its lid open until the end.")
+	p.answer("Press Enter to continue")
+}
+
+// openAppStore has the user sign in to the App Store, which mas cannot do. A skip takes the App
+// Store apps out of the plan and returns their ids, to install later.
+func openAppStore(ctx context.Context, p prompter, r run.Runner, plan *apps.Plan) []string {
+	if len(plan.StoreIDs) == 0 {
+		return nil
+	}
+	p.cmd.Printf("%d of your apps come from the App Store: sign in to it with your Apple Account.\n", len(plan.StoreIDs))
+	_, _ = r.Run(ctx, run.Cmd{Name: "open", Args: []string{"-a", "App Store"}}) // the user can still open it by hand
+	if a, _ := p.answer("Press Enter once signed in, or s to skip the App Store apps"); !strings.EqualFold(a, "s") {
+		return nil
+	}
+	skipped := plan.StoreIDs
+	plan.StoreIDs = nil
+	return skipped
+}
+
+// keepAwake keeps the Mac from sleeping until stop. caffeinate -w also ends with floe, even a killed one.
+func keepAwake(ctx context.Context, r run.Runner) (stop func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Without it the Mac may sleep, and the restore resumes on wake.
+		_, _ = r.Run(ctx, run.Cmd{Name: "caffeinate", Args: []string{"-i", "-w", strconv.Itoa(os.Getpid())}})
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+// printResult lists what the run left to do by hand.
+func printResult(p prompter, res replace.Result) {
+	p.cmd.Printf("✓ Restored %.1f GB of files\n", float64(res.Restored)/1e9)
+	printAppsReport(p, res.Apps)
+	if len(res.Partial) > 0 {
+		p.cmd.Printf("! %d files could not be restored:\n", len(res.Partial))
+		for _, f := range res.Partial {
+			p.cmd.Printf("    %s\n", f)
+		}
+	}
+	for _, err := range res.RestoreErrs {
+		p.cmd.Printf("! %v\n", err)
+	}
+	for _, err := range res.SettingsErrs {
+		p.cmd.Printf("! Apple setting not carried: %v\n", err)
+	}
+}

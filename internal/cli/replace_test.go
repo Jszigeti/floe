@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/Jszigeti/floe/internal/askpass"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/launchd"
+	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/run"
 )
 
@@ -112,8 +114,8 @@ func TestReplaceRestoresTheOldHomeAndTakesOverItsConfig(t *testing.T) {
 	if c == nil || !slices.Equal(c.Args[:len(c.Args)-1], []string{"restore", "--json", "bbb222:/Users/alice", "--target", home, "--exclude-file"}) {
 		t.Fatalf("restore call = %+v", c)
 	}
-	wantExcludes := "/.local/bin/floe\n/.local/share/floe\n/.local/state/floe\n/.config/floe\n" +
-		"/Library/LaunchAgents/com.floe.backup.plist\n/Library/Application Support/CloudDocs\n"
+	wantExcludes := "/.Trash\n/Library/*\n/.local/bin/floe\n/.local/share/floe\n/.local/state/floe\n/.config/floe\n" +
+		"/Library/LaunchAgents/com.floe.backup.plist\n/Library/Logs/floe.log\n/Library/Preferences\n"
 	if excludes != wantExcludes {
 		t.Fatalf("exclude file = %q", excludes)
 	}
@@ -274,19 +276,6 @@ func TestReplaceListsFailedFilesAndGoesOn(t *testing.T) {
 	}
 }
 
-func TestReplaceReinstallsAppsAfterTheRestore(t *testing.T) {
-	f, dest, _ := appsReplace(t, "")
-	out, err := runInit(f, dest+"\n\npw\n")
-	if err != nil {
-		t.Fatalf("init: %v\n%s", err, out)
-	}
-	restoreAt := slices.IndexFunc(f.Calls, func(c run.Cmd) bool { return len(c.Args) > 0 && c.Args[0] == "restore" })
-	bundleAt := slices.IndexFunc(f.Calls, isBundle)
-	if restoreAt < 0 || bundleAt < restoreAt {
-		t.Fatalf("brew bundle must run after the restore: restore at %d, bundle at %d", restoreAt, bundleAt)
-	}
-}
-
 func TestReplaceStopsAskingWhenTheAccountIsNotAnAdmin(t *testing.T) {
 	f, dest, calls := appsReplace(t, "s3cret")
 	base := f.Handler
@@ -309,7 +298,7 @@ func TestReplaceStopsAskingWhenTheAccountIsNotAnAdmin(t *testing.T) {
 	}
 }
 
-// appsReplace is a Replace whose recipe installs jq with brew, and whose sudo accepts only
+// appsReplace is a Replace whose recipe installs jq and zed with brew, and whose sudo accepts only
 // password, read from the socket floe serves. calls lists its admin and brew bundle calls.
 func appsReplace(t *testing.T, password string) (*run.Fake, string, func() []string) {
 	t.Helper()
@@ -324,7 +313,7 @@ func appsReplace(t *testing.T, password string) (*run.Fake, string, func() []str
 	f.Handler = func(c run.Cmd) (string, error) {
 		switch {
 		case len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/Brewfile"):
-			return "brew \"jq\"\n", nil
+			return "brew \"jq\"\ncask \"zed\"\n", nil
 		case filepath.Base(c.Name) == "sudo" && slices.Contains(c.Args, "-A"):
 			program, _ := strings.CutPrefix(c.Env[0], "SUDO_ASKPASS=")
 			var got bytes.Buffer
@@ -392,5 +381,218 @@ func TestReplaceGoesOnWithoutAdminAfterThreeRefusals(t *testing.T) {
 	}
 	if strings.Count(out, "This password was refused") != 2 || !strings.Contains(out, "may ask for your password later") {
 		t.Fatalf("output:\n%s", out)
+	}
+}
+
+// withAnswers makes f answer the commands whose name and args start with a key, and the dumps
+// of manifest files named by a key ending in their file name, before its usual answers.
+func withAnswers(f *run.Fake, answers map[string]string) {
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		line := c.Name + " " + strings.Join(c.Args, " ")
+		for key, out := range answers {
+			if strings.HasPrefix(line, key) || len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/"+key) {
+				return out, nil
+			}
+		}
+		return base(c)
+	}
+}
+
+// brewOnPath puts a brew that does nothing first on PATH, so the apps task finds Homebrew installed.
+func brewOnPath(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "brew"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+}
+
+func TestReplaceAsksOnlyWhatIsNeeded(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	brewOnPath(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"pmset -g batt": "Now drawing from 'AC Power'\n", "Brewfile": "brew \"jq\"\n"})
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	for _, never := range []string{"battery", "App Store", "Administrator password", "Full Disk Access"} {
+		if strings.Contains(out, never) {
+			t.Errorf("asked about %q with nothing needing it:\n%s", never, out)
+		}
+	}
+	if f.CalledWith("open", "-a") || !f.CalledWith("bundle", "install") {
+		t.Fatalf("calls = %+v", f.Calls)
+	}
+}
+
+func TestReplaceAsksForPowerAndCanSkipTheAppStore(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{
+		"pmset -g batt": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)	80%; discharging\n",
+		"mas.txt":       "409183694  Keynote  (15.2)\n",
+	})
+	out, err := runInit(f, dest+"\n\npw\n\ns\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "plug it in and keep its lid open") || !f.CalledWith("open -a App Store") {
+		t.Fatalf("power or App Store step missing:\n%s", out)
+	}
+	if strings.Contains(out, "Administrator password") || !strings.Contains(out, "! Run later: mas install 409183694") {
+		t.Fatalf("a skipped App Store must leave its apps for later, with nothing else to install:\n%s", out)
+	}
+}
+
+func TestReplaceAsksTheAdminPasswordForAppStoreApps(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"mas.txt": "409183694  Keynote  (15.2)\n"})
+	out, err := runInit(f, dest+"\n\npw\n\n")
+	if err != nil || !strings.Contains(out, "Administrator password (to install your apps): ") {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+}
+
+func TestReplaceTagsTheReplacedSnapshot(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{
+		filepath.Join(os.Getenv("HOME"), ".local/share/floe/bin/restic") + " tag": `{"message_type":"changed","old_snapshot_id":"bbb222ff","new_snapshot_id":"ddd444ff"}` + "\n",
+	})
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	tag := resticCall(f, "tag")
+	if tag == nil || !slices.Equal(tag.Args, []string{"tag", "--json", "--add", "replaced", "bbb222"}) {
+		t.Fatalf("tag call = %+v", tag)
+	}
+	if c := resticCall(f, "restore"); c == nil || c.Args[2] != "ddd444ff:/Users/alice" {
+		t.Fatalf("restore call = %+v, want the retagged snapshot's new id", c)
+	}
+}
+
+func TestReplaceInstallsTheInventoryCasks(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	brewOnPath(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"apps.json": `[{"name":"Google Chrome","path":"/Applications/Google Chrome.app","source":"cask","cask":"google-chrome","size":1}]`})
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil || !f.CalledWith("brew install --cask --adopt google-chrome") {
+		t.Fatalf("init: %v, calls = %+v\n%s", err, f.Calls, out)
+	}
+}
+
+func TestReplaceMatchesListedAppsWithoutAnInventory(t *testing.T) {
+	home, dest, _ := startReplace(t)
+	brewOnPath(t)
+	cache := filepath.Join(home, ".local/state/floe/cask.json")
+	if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cache, []byte(`[{"token":"google-chrome","artifacts":[{"app":["Google Chrome.app"]}]}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"applications.txt": "Google Chrome.app\nSafari.app\n"})
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err != nil || !f.CalledWith("brew install --cask --adopt google-chrome") {
+		t.Fatalf("init: %v, calls = %+v\n%s", err, f.Calls, out)
+	}
+}
+
+func TestReplaceCountsTheAppsInTheFreeSpace(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"apps.json": `[{"name":"Huge","path":"/Applications/Huge.app","source":"backup","size":1152921504606846976}]`})
+	if _, err := runInit(f, dest+"\n\npw\n"); err == nil || !strings.Contains(err.Error(), "GB of apps") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestReplaceKeepsTheMacAwake(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	if out, err := runInit(f, dest+"\n\npw\n"); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if !f.CalledWith("caffeinate -i -w " + strconv.Itoa(os.Getpid())) {
+		t.Fatalf("calls = %+v", f.Calls)
+	}
+}
+
+func TestReplaceStopsUnfinishedWhenARestoreFails(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(errors.New("Fatal: unable to open repository"), "1000")
+	out, err := runInit(f, dest+"\n\npw\n")
+	if err == nil || err.Error() != "the replace is not finished: run floe init again to resume" {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "! restoring /Users/alice: ") || strings.Contains(out, "now continues") || strings.Contains(out, "Restart this Mac") {
+		t.Fatalf("want the failed step listed and no success:\n%s", out)
+	}
+	if st, ok, _ := replace.LoadState(); !ok || !st.Restoring {
+		t.Fatalf("state = %+v, %v, want it kept for the resume", st, ok)
+	}
+	if cp, _ := config.Path(); fileExists(cp) {
+		t.Fatal("config saved by an unfinished replace")
+	}
+	if pp, _ := launchd.PlistPath(); fileExists(pp) || f.CalledWith("launchctl", "bootstrap") {
+		t.Fatal("schedule installed by an unfinished replace")
+	}
+}
+
+func TestReplaceSchedulesBackupsOnlyOnceRestored(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	cp, _ := config.Path()
+	pp, _ := launchd.PlistPath()
+	f := replaceFake(nil, "1000")
+	base := f.Handler
+	early := false
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "restore" && (fileExists(cp) || fileExists(pp)) {
+			early = true
+		}
+		return base(c)
+	}
+	if out, err := runInit(f, dest+"\n\npw\n"); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if early {
+		t.Fatal("config or schedule in place while the restore runs: a scheduled backup could start mid-restore")
+	}
+	if !fileExists(cp) || !fileExists(pp) {
+		t.Fatal("config or schedule missing after the replace")
+	}
+}
+
+func TestReplaceWaitsForOpenAppsLast(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"mas.txt": "409183694  Keynote  (15.2)\n"})
+	base := f.Handler
+	listed := 0
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
+			listed++
+			if listed == 1 {
+				return "Safari\n", nil
+			}
+			return "", nil
+		}
+		return base(c)
+	}
+	// The destination, the backup, its passphrase, the App Store sign-in, no admin password, Safari quit.
+	out, err := runInit(f, dest+"\n\npw\n\n\n\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	signIn, admin, quit := strings.Index(out, "sign in to it"), strings.Index(out, "Administrator password"), strings.Index(out, "Quit these apps")
+	if signIn < 0 || admin < 0 || quit < signIn || quit < admin {
+		t.Fatalf("want the apps to quit asked after the App Store and the admin password:\n%s", out)
 	}
 }

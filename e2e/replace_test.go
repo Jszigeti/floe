@@ -29,13 +29,22 @@ fi
 exit 0
 `
 
-// newMacShims installs the usual shims plus brew and mas, so neither Mac touches the runner's own apps.
+const loggingShimTmpl = "#!/bin/sh\necho \"__NAME__ $*\" >> \"__LOG__\"\nexit 0\n"
+
+// newMacShims installs the usual shims plus brew, mas, pmset, open and caffeinate, so neither Mac
+// touches the runner's own apps nor opens the App Store on it.
 func newMacShims(t *testing.T, store, log string) string {
 	t.Helper()
 	dir := t.TempDir()
 	setupShims(t, dir, store, log)
 	writeShim(t, dir, "brew", strings.ReplaceAll(brewShimTmpl, "__LOG__", log))
 	writeShim(t, dir, "mas", strings.ReplaceAll(masShimTmpl, "__LOG__", log))
+	writeShim(t, dir, "pmset", "#!/bin/sh\necho \"Now drawing from 'AC Power'\"\nexit 0\n")
+	for _, name := range []string{"open", "caffeinate"} {
+		writeShim(t, dir, name, strings.NewReplacer("__NAME__", name, "__LOG__", log).Replace(loggingShimTmpl))
+	}
+	// Desktop and Documents are not in iCloud here, so the replace restores them.
+	writeShim(t, dir, "defaults", "#!/bin/sh\ncase \"$*\" in *FXICloudDrive*) echo 0 ;; *) echo 1 ;; esac\nexit 0\n")
 	return dir
 }
 
@@ -117,8 +126,9 @@ func TestE2EReplace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustContain(t, string(calls), "brew bundle install --file "+filepath.Join(bob, ".local/state/floe/recipe/Brewfile"))
-	mustContain(t, string(calls), "mas install 123456")
+	// App Store ids now come from the app inventory of the runner's own /Applications, so none is asserted here.
+	mustContain(t, string(calls), "brew bundle install --file "+filepath.Join(bob, ".local/state/floe/recipe/Brewfile.apps"))
+	mustContain(t, string(calls), "caffeinate -i -w ")
 
 	out, code = runFloe(t, bob, bobShims, "", "backup")
 	if code != 0 {

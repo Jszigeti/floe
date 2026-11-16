@@ -20,6 +20,14 @@ type State struct {
 	SnapshotID string    `toml:"snapshot_id"`
 	OldHome    string    `toml:"old_home"`
 	Started    time.Time `toml:"started"`
+	// Present is what macOS had created in the new home's Application Support before the
+	// first run wrote there: a resume finds the folders that run restored beside them.
+	Present map[string]bool `toml:"present"`
+	// AppsSnapshotID is the apps snapshot pinned with the home one, empty when the backup has
+	// none: a resume never picks one this Mac made since.
+	AppsSnapshotID string `toml:"apps_snapshot_id"`
+	// Restoring is true once the run passed every check and began writing to this home.
+	Restoring bool `toml:"restoring"`
 }
 
 func statePath() (string, error) {

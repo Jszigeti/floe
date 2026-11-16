@@ -3,6 +3,7 @@ package replace
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -12,6 +13,8 @@ func TestStateSavedThenLoaded(t *testing.T) {
 	want := State{
 		Backup: "MacBook-Pro", Repo: "/dest/Floe.backup/MacBook-Pro", SnapshotID: "aaa111",
 		OldHome: "/Users/alice", Started: time.Date(2026, 11, 16, 9, 30, 0, 0, time.UTC),
+		Present:        map[string]bool{"com.apple.TCC": true, "Already There": true},
+		AppsSnapshotID: "ccc333", Restoring: true,
 	}
 	if err := want.Save(); err != nil {
 		t.Fatal(err)
@@ -20,7 +23,7 @@ func TestStateSavedThenLoaded(t *testing.T) {
 		t.Fatalf("state not in floe's state folder: %v", err)
 	}
 	got, ok, err := LoadState()
-	if err != nil || !ok || got != want {
+	if err != nil || !ok || !reflect.DeepEqual(got, want) {
 		t.Fatalf("LoadState = %+v, %v, %v, want %+v", got, ok, err, want)
 	}
 }

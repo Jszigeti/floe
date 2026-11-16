@@ -19,19 +19,8 @@ import (
 	"github.com/Jszigeti/floe/internal/run"
 )
 
-// replaceExcludes keep the old Mac's floe from overwriting the one running the restore, and
-// leave the iCloud Drive client's state to iCloud, which rebuilds it.
-var replaceExcludes = []string{
-	"/.local/bin/floe",
-	"/.local/share/floe",
-	"/.local/state/floe",
-	"/.config/floe",
-	"/Library/LaunchAgents/com.floe.backup.plist",
-	"/Library/Application Support/CloudDocs",
-}
-
 // recipeFiles are the manifest files a backup carries (see internal/manifest).
-var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt"}
+var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt", "apps.json", "photos-icloud", "desktop-documents-icloud"}
 
 // runningAppsJXA lists the open apps but Finder and the one whose bundle id it is given, the
 // terminal floe runs in. It reads NSWorkspace, which needs no Automation permission.
@@ -44,7 +33,8 @@ function run(argv) {
     .join("\n");
 }`
 
-// runReplace makes this Mac the continuation of b: its files, its floe settings, its history.
+// runReplace makes this Mac the continuation of b: its files, its apps, its floe settings, its
+// history. Every question comes first; once the run starts, failures only go to the report.
 // A resume carries the state of the interrupted run, a new Replace a zero State.
 func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, b foundBackup, resume replace.State) error {
 	home, err := os.UserHomeDir()
@@ -55,46 +45,83 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := askBackupPassphrase(ctx, p, d.Runner, client, b.Name); err != nil {
 		return err
 	}
-	st, err := pinSnapshot(ctx, client, b, resume)
+	st, err := pinSnapshot(ctx, client, b, resume, home)
 	if err != nil {
 		return err
 	}
 	if err := waitForFullDiskAccess(p, home); err != nil {
 		return err
 	}
-	id, oldHome := st.SnapshotID, st.OldHome
-	if err := checkFreeSpace(ctx, client, id, home); err != nil {
+	recipe, err := dumpRecipe(ctx, p, client, st.SnapshotID, st.OldHome, home)
+	if err != nil {
 		return err
+	}
+	list, err := inventoryOf(ctx, recipe, d.CaskURL, home)
+	if err != nil {
+		return err
+	}
+	plan, err := apps.PlanFrom(recipe, list)
+	if err != nil {
+		return fmt.Errorf("reading the app recipe: %w", err)
+	}
+	// A resumed run passed it already, and what it restored since would count twice.
+	if !st.Restoring {
+		if err := checkFreeSpace(ctx, client, st.SnapshotID, home, appsSize(list)); err != nil {
+			return err
+		}
+	}
+	askForPower(ctx, p, d.Runner)
+	skipped := openAppStore(ctx, p, d.Runner, &plan)
+	install := apps.Deps{Runner: d.Runner, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
+	if plan.NeedsAdmin(apps.BrewDirs) {
+		install.Admin = startAdmin(ctx, p, d.Runner)
+		defer install.Admin.Close()
 	}
 	if err := waitForAppsToQuit(ctx, p, d.Runner); err != nil {
 		return err
 	}
+	defer keepAwake(ctx, d.Runner)()
 
-	p.cmd.Printf("→ Restoring %s into %s, this takes a while…\n", b.Name, home)
-	excludeFile, err := os.CreateTemp("", "floe-excludes-*")
+	// restic writes a retagged snapshot under a new id, which the state pins instead.
+	if st.SnapshotID, err = client.Tag(ctx, st.SnapshotID, []string{"replaced"}, nil); err != nil {
+		return fmt.Errorf("keeping the replaced snapshot for a year: %w", err)
+	}
+	st.Restoring = true
+	if err := st.Save(); err != nil {
+		return err
+	}
+	cfg, err := takeOverConfig(ctx, p, client, st.SnapshotID, st.OldHome, home)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(excludeFile.Name()) }()
-	if _, err := excludeFile.WriteString(strings.Join(replaceExcludes, "\n") + "\n"); err != nil {
-		return err
-	}
-	if err := excludeFile.Close(); err != nil {
-		return err
-	}
-	var partial *restic.PartialRestoreError
-	if err := client.RestoreFolder(ctx, id, oldHome, home, excludeFile.Name(), func(restic.RestoreStatus) {}); err != nil && !errors.As(err, &partial) {
-		return fmt.Errorf("restoring %s: %w", b.Name, err)
-	}
-	recipe, err := dumpRecipe(ctx, p, client, id, oldHome, home)
-	if err != nil {
-		return err
-	}
-	cfg, err := takeOverConfig(ctx, p, client, id, oldHome, home)
-	if err != nil {
-		return err
-	}
+	oldMachine := cfg.Machine
 	cfg.Destination, cfg.Repo, cfg.Machine = dest, b.Path, mac
+	appsSnap, err := pinnedApps(ctx, client, st.AppsSnapshotID)
+	if err != nil {
+		return err
+	}
+
+	p.cmd.Printf("→ Restoring %s into %s while its apps install, this takes a while…\n", b.Name, home)
+	res, err := replace.Run(ctx, replace.RunDeps{
+		Client: client, Runner: d.Runner, Snapshot: st.SnapshotID, Apps: appsSnap,
+		Rule: replace.RuleInput{
+			OldHome: st.OldHome, Present: st.Present, Apps: list,
+			PhotosICloud: readFlag(recipe, "photos-icloud"), DesktopDocumentsICloud: readFlag(recipe, "desktop-documents-icloud"),
+		},
+		NewHome: home, OldMachine: oldMachine, Plan: plan, Install: install,
+		Log: func(format string, a ...any) { p.cmd.Printf(format+"\n", a...) },
+	})
+	if err != nil {
+		return err
+	}
+	if len(skipped) > 0 {
+		res.Apps.Commands = append(res.Apps.Commands, "mas install "+strings.Join(skipped, " "))
+	}
+	printResult(p, res)
+	if len(res.RestoreErrs) > 0 {
+		return errors.New("the replace is not finished: run floe init again to resume")
+	}
+	// Saved only now, so no scheduled backup runs under a restore still writing this home.
 	if err := cfg.Save(); err != nil {
 		return err
 	}
@@ -105,20 +132,8 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := launchd.Install(ctx, d.Runner, execPath, cfg.Hour); err != nil {
 		return err
 	}
-
-	rep, err := reinstallApps(ctx, p, d.Runner, recipe)
-	if err != nil {
-		return err
-	}
-	printAppsReport(p, rep)
-	if partial != nil {
-		p.cmd.Printf("! %d files could not be restored:\n", len(partial.Failed))
-		for _, f := range partial.Failed {
-			p.cmd.Printf("    %s\n", filepath.Join(home, f))
-		}
-	}
 	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n", b.Name, formatHour(cfg.Hour))
-	p.cmd.Println("Restart this Mac now, so macOS and your apps reload the restored data and keychain. Then run `floe doctor`.")
+	p.cmd.Println("Restart this Mac now, so macOS and your apps reload the restored data and settings. Then run `floe doctor`.")
 	return replace.ClearState()
 }
 
@@ -164,8 +179,8 @@ func waitForFullDiskAccess(p prompter, home string) error {
 }
 
 // checkFreeSpace requires room for the restored files plus the repository, which iCloud
-// downloads while restic reads it.
-func checkFreeSpace(ctx context.Context, client *restic.Client, id, home string) error {
+// downloads while restic reads it, plus the apps to install.
+func checkFreeSpace(ctx context.Context, client *restic.Client, id, home string, appBytes int64) error {
 	files, err := client.RestoreSize(ctx, id)
 	if err != nil {
 		return err
@@ -179,9 +194,9 @@ func checkFreeSpace(ctx context.Context, client *restic.Client, id, home string)
 		return err
 	}
 	free := int64(st.Bavail) * int64(st.Bsize)
-	if free < files+repo {
-		return fmt.Errorf("not enough free space: %.1f GB of files plus %.1f GB of backup to download, %.1f GB free",
-			float64(files)/1e9, float64(repo)/1e9, float64(free)/1e9)
+	if free < files+repo+appBytes {
+		return fmt.Errorf("not enough free space: %.1f GB of files plus %.1f GB of backup to download plus %.1f GB of apps, %.1f GB free",
+			float64(files)/1e9, float64(repo)/1e9, float64(appBytes)/1e9, float64(free)/1e9)
 	}
 	return nil
 }
@@ -217,6 +232,7 @@ func dumpRecipe(ctx context.Context, p prompter, client *restic.Client, id, oldH
 		data, err := client.Dump(ctx, id, filepath.Join(oldHome, ".local/state/floe/manifest", name))
 		if err != nil {
 			p.cmd.Printf("  %s is not in the backup, skipped\n", name)
+			_ = os.Remove(filepath.Join(dir, name)) // an earlier run's copy would stand in for it
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
@@ -238,27 +254,6 @@ func takeOverConfig(ctx context.Context, p prompter, client *restic.Client, id, 
 		return config.Config{}, fmt.Errorf("reading the old Mac's floe config: %w", err)
 	}
 	return old.Rehome(oldHome, home), nil
-}
-
-// reinstallApps installs the recipe's apps under one administrator password, naming each as it starts.
-func reinstallApps(ctx context.Context, p prompter, r run.Runner, recipe string) (apps.Report, error) {
-	plan, err := apps.PlanFrom(recipe, apps.ListedApps(recipe, nil))
-	if err != nil {
-		return apps.Report{}, fmt.Errorf("reading the app recipe: %w", err)
-	}
-	deps := apps.Deps{Runner: r, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
-	if plan.Brewfile != "" || plan.VSCode != "" || len(plan.Casks) > 0 || len(plan.StoreIDs) > 0 {
-		deps.Admin = startAdmin(ctx, p, r)
-		defer deps.Admin.Close()
-		p.cmd.Println("→ Installing your apps…")
-	}
-	current := ""
-	return apps.Install(ctx, deps, plan, func(pr apps.Progress) {
-		if pr.Current != "" && pr.Current != current {
-			current = pr.Current
-			p.cmd.Printf("  %d of %d  %s\n", pr.Done, pr.Total, current)
-		}
-	}), nil
 }
 
 // startAdmin asks for the administrator password, three tries at most, so Homebrew and mas never
