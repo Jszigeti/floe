@@ -137,6 +137,7 @@ func TestE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	seedResticFromRealHome(t, origBin, home)
+	seedEmptyCaskList(t, home)
 	shimDir := t.TempDir()
 	workDir := t.TempDir()
 	dataDir := t.TempDir() // outside HOME so it's never picked up by the backup itself
@@ -410,6 +411,19 @@ func seedResticFromRealHome(t *testing.T, origBin, isolatedHome string) {
 		t.Fatal(err)
 	}
 	t.Log("seeded restic binary from runner's real home; download skipped")
+}
+
+// seedEmptyCaskList gives the isolated HOME a fresh, empty Homebrew cask list: the backup
+// never downloads it, and no app of the runner's /Applications lands in an apps snapshot.
+func seedEmptyCaskList(t *testing.T, isolatedHome string) {
+	t.Helper()
+	p := filepath.Join(isolatedHome, ".local/state/floe/cask.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // restoreResticToRealHome copies a freshly downloaded restic binary back to

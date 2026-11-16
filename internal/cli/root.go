@@ -6,8 +6,10 @@ import (
 )
 
 type Deps struct {
-	Version string
-	Runner  run.Runner
+	Version  string
+	Runner   run.Runner
+	AppRoots []string // folders whose apps the backup inventories, none in tests
+	CaskURL  string   // Homebrew's cask list, empty in tests
 }
 
 func Root(d Deps) *cobra.Command {

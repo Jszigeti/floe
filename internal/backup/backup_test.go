@@ -694,3 +694,19 @@ func TestIncompleteBackupWithUnparsedDetailFallsBack(t *testing.T) {
 		t.Fatalf("last_incomplete.log was overwritten, want %q got %q", originalContent, string(data))
 	}
 }
+
+func TestDigestRepeatsIncompleteRecipe(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "brew" {
+			return "", errors.New("brew boom")
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if len(n.msgs) != 1 || !strings.Contains(n.msgs[0], "recipe incomplete since") || !strings.Contains(n.msgs[0], "Brewfile") {
+		t.Fatalf("digest = %v, want the incomplete recipe repeated", n.msgs)
+	}
+}

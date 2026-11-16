@@ -12,6 +12,7 @@ import (
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/digest"
 	"github.com/Jszigeti/floe/internal/icloud"
+	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
@@ -95,6 +96,16 @@ type Deps struct {
 	// in internal/launchd). A manual `floe backup` never owns the incomplete
 	// report — see logIncomplete and the Run backup branch.
 	Scheduled bool
+	AppRoots  []string // folders whose apps are inventoried, none in tests
+	CaskURL   string   // Homebrew's cask list, empty in tests
+}
+
+func statePath(name string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local/state/floe", name), nil
 }
 
 func Run(ctx context.Context, d Deps) error {
@@ -102,15 +113,8 @@ func Run(ctx context.Context, d Deps) error {
 		return err
 	}
 
-	if dir, err := manifest.Dir(); err == nil {
-		warnings, err := manifest.Dump(ctx, d.Runner, dir, "/Applications")
-		if err != nil {
-			d.Log("manifest dump skipped: %v", err)
-		}
-		for _, w := range warnings {
-			d.Log("manifest: %s", w)
-		}
-	}
+	caskCache, _ := statePath("cask.json") // no home: no manifest, nothing to leave out
+	dumpManifest(ctx, d, caskCache)
 
 	onICloud := icloud.IsICloudPath(d.Cfg.Destination)
 	if onICloud {
@@ -138,6 +142,9 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
+	if caskCache != "" {
+		excludes = append(excludes, caskCache) // refreshed weekly and never restored
+	}
 	incomplete := false
 	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes, []string{"home"}); err != nil {
 		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would
@@ -173,12 +180,47 @@ func Run(ctx context.Context, d Deps) error {
 		} else if size, err := d.Client.RepoSize(ctx); err == nil {
 			msg = fmt.Sprintf("Backups healthy — repo %.1f GB", float64(size)/1e9)
 		}
+		if recipe := incompleteRecipe(); recipe != "" {
+			msg += "; " + recipe
+		}
 		d.Notify(title, msg)
 		if err := digest.MarkSent(d.Now()); err != nil {
 			d.Log("digest stamp write failed: %v", err)
 		}
 	}
 	return nil
+}
+
+// dumpManifest writes the recipe and returns the app inventory; nothing in it ever fails the backup.
+func dumpManifest(ctx context.Context, d Deps, caskCache string) []inventory.App {
+	dir, err := manifest.Dir()
+	if err != nil {
+		return nil
+	}
+	casks, err := inventory.LoadCasks(ctx, caskCache, d.CaskURL, 7*24*time.Hour, d.Now())
+	if err != nil {
+		d.Log("manifest: %v", err)
+	}
+	apps, warnings, err := manifest.Dump(ctx, d.Runner, dir, manifest.Options{AppRoots: d.AppRoots, Casks: casks, Now: d.Now()})
+	if err != nil {
+		d.Log("manifest dump skipped: %v", err)
+	}
+	for _, w := range warnings {
+		d.Log("manifest: %s", w)
+	}
+	return apps
+}
+
+func incompleteRecipe() string {
+	dir, err := manifest.Dir()
+	if err != nil {
+		return ""
+	}
+	failed, err := manifest.Failures(dir)
+	if err != nil {
+		return ""
+	}
+	return manifest.Incomplete(failed)
 }
 
 func runHooks(ctx context.Context, d Deps, hooks []string, kind string) error {

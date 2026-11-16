@@ -680,3 +680,54 @@ func TestDoctorIgnoresIncompleteReportBeforeReinstall(t *testing.T) {
 		t.Fatalf("a report older than the installed schedule must not count:\n%s", s)
 	}
 }
+
+func TestDoctorReportsIncompleteRecipe(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	dir := filepath.Join(os.Getenv("HOME"), ".local/state/floe/manifest")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	status := `{"failed": {"Brewfile": "2026-11-04T12:00:00Z"}}`
+	if err := os.WriteFile(filepath.Join(dir, "status.json"), []byte(status), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("an incomplete recipe is a warning, not a failure: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "! recipe") || !strings.Contains(out.String(), "recipe incomplete since 2026-11-04: Brewfile failed") {
+		t.Fatalf("want the incomplete recipe reported:\n%s", out.String())
+	}
+}
+
+func TestDoctorRecipeCompleteAndUnreadable(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	run := func() string {
+		cmd := Root(Deps{Version: "t", Runner: f})
+		out := new(bytes.Buffer)
+		cmd.SetOut(out)
+		cmd.SetArgs([]string{"doctor"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("doctor: %v\n%s", err, out.String())
+		}
+		return out.String()
+	}
+	if out := run(); !strings.Contains(out, "✓ recipe") {
+		t.Fatalf("want a complete recipe without status.json:\n%s", out)
+	}
+	dir := filepath.Join(os.Getenv("HOME"), ".local/state/floe/manifest")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "status.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(); !strings.Contains(out, "! recipe") {
+		t.Fatalf("want a warning for an unreadable status.json:\n%s", out)
+	}
+}

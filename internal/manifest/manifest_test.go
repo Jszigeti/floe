@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -25,7 +26,7 @@ func TestDumpWritesRecipeFiles(t *testing.T) {
 		"crontab -l": {Out: "@daily true\n"},
 	}}
 
-	if _, err := Dump(context.Background(), f, dir, appsRoot); err != nil {
+	if _, _, err := Dump(context.Background(), f, dir, opts(appsRoot)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -73,7 +74,7 @@ func TestDumpWarnsOnWriteFailure(t *testing.T) {
 		"crontab -l": {Out: "@daily true\n"},
 	}}
 
-	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	_, warnings, err := Dump(context.Background(), f, dir, opts(appsRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestDumpToleratesMissingTools(t *testing.T) {
 	appsRoot := t.TempDir()
 	f := &run.Fake{Default: run.Response{Err: errors.New("no such tool")}}
 
-	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	_, warnings, err := Dump(context.Background(), f, dir, opts(appsRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestDumpRemovesStaleFileWhenToolFails(t *testing.T) {
 		return "", nil
 	}}
 
-	warnings, err := Dump(context.Background(), f, dir, appsRoot)
+	_, warnings, err := Dump(context.Background(), f, dir, opts(appsRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,15 +153,17 @@ func TestDumpTreatsMissingCrontabAsEmpty(t *testing.T) {
 		return "out", nil
 	}}
 
-	warnings, err := Dump(context.Background(), f, dir, t.TempDir())
+	_, warnings, err := Dump(context.Background(), f, dir, opts(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "crontab.txt")); !os.IsNotExist(err) {
 		t.Fatalf("want stale crontab.txt removed when there is no crontab, err = %v", err)
 	}
-	if len(warnings) != 0 {
-		t.Fatalf("a missing crontab is not a failure, warnings = %v", warnings)
+	for _, w := range warnings {
+		if strings.Contains(w, "crontab") {
+			t.Fatalf("a missing crontab is not a failure, warnings = %v", warnings)
+		}
 	}
 }
 
@@ -193,7 +196,7 @@ func TestDumpMkdirAllFails(t *testing.T) {
 	dir := filepath.Join(blocker, "manifest") // blocker is a file, not a dir
 	f := &run.Fake{}
 
-	if _, err := Dump(context.Background(), f, dir, t.TempDir()); err == nil {
+	if _, _, err := Dump(context.Background(), f, dir, opts(t.TempDir())); err == nil {
 		t.Fatal("want error when the manifest dir cannot be created")
 	}
 }
@@ -203,12 +206,16 @@ func TestDumpApplicationsSkipsMissingRoot(t *testing.T) {
 	dir := t.TempDir()
 	f := &run.Fake{}
 
-	if _, err := Dump(context.Background(), f, dir, filepath.Join(dir, "no-such-apps-root")); err != nil {
+	if _, _, err := Dump(context.Background(), f, dir, opts(filepath.Join(dir, "no-such-apps-root"))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "applications.txt")); !os.IsNotExist(err) {
 		t.Fatalf("want no applications.txt when appsRoot cannot be read, err = %v", err)
 	}
+}
+
+func opts(appsRoot string) Options {
+	return Options{AppRoots: []string{appsRoot}, Now: time.Now()}
 }
 
 func assertFile(t *testing.T, path, want string) {

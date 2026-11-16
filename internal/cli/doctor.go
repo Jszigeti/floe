@@ -15,6 +15,7 @@ import (
 	"github.com/Jszigeti/floe/internal/icloud"
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
+	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/spf13/cobra"
 )
@@ -219,6 +220,20 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					return true, true, fmt.Sprintf(
 						"skipped %d protected files on %s — macOS ties Full Disk Access to the exact binary, so re-grant it to %s after every upgrade (System Settings → Privacy & Security)",
 						count, when.Format("2006-01-02 3:04 PM"), bin)
+				}},
+				{"recipe", func(ctx context.Context) (bool, bool, string) {
+					dir, err := manifest.Dir()
+					if err != nil {
+						return true, true, err.Error()
+					}
+					failed, err := manifest.Failures(dir)
+					if err != nil {
+						return true, true, fmt.Sprintf("unknown, status.json unreadable: %v", err)
+					}
+					if recipe := manifest.Incomplete(failed); recipe != "" {
+						return true, true, recipe
+					}
+					return true, false, "complete"
 				}},
 			}
 			if icloud.IsICloudPath(cfg.Destination) {

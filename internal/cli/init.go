@@ -103,8 +103,10 @@ func newInitCmd(d Deps) *cobra.Command {
 						cmd.Printf("notification failed: %v\n", err)
 					}
 				},
-				Now: time.Now,
-				Log: func(f string, a ...any) { cmd.Printf(f+"\n", a...) },
+				Now:      time.Now,
+				Log:      func(f string, a ...any) { cmd.Printf(f+"\n", a...) },
+				AppRoots: d.AppRoots,
+				CaskURL:  d.CaskURL,
 			})
 			if err != nil {
 				return err

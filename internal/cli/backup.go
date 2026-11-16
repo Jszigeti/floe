@@ -38,6 +38,8 @@ func newBackupCmd(d Deps) *cobra.Command {
 				Now:       time.Now,
 				Log:       logf,
 				Scheduled: os.Getenv("FLOE_SCHEDULED") == "1",
+				AppRoots:  d.AppRoots,
+				CaskURL:   d.CaskURL,
 			})
 			if err != nil {
 				logf("backup failed: %v", err)

@@ -70,6 +70,8 @@ func TestE2EReplace(t *testing.T) {
 	}
 	seedResticFromRealHome(t, origBin, alice)
 	seedResticFromRealHome(t, origBin, bob)
+	seedEmptyCaskList(t, alice)
+	seedEmptyCaskList(t, bob)
 	data := t.TempDir()
 	log := filepath.Join(data, "calls.log")
 	aliceShims := newMacShims(t, filepath.Join(data, "alice-keychain"), log)
