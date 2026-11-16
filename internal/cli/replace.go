@@ -185,20 +185,30 @@ func checkFreeSpace(ctx context.Context, client *restic.Client, id, home string,
 	if err != nil {
 		return err
 	}
-	repo, err := client.RepoSize(ctx)
-	if err != nil {
-		return err
-	}
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(home, &st); err != nil {
 		return err
 	}
 	free := int64(st.Bavail) * int64(st.Bsize)
+	// The repository only fills this disk when it lives on it, as iCloud Drive does: an external
+	// disk or a shared folder holds its own copy.
+	var repo int64
+	if sameVolume(client.Repo, st) {
+		if repo, err = client.RepoSize(ctx); err != nil {
+			return err
+		}
+	}
 	if free < files+repo+appBytes {
 		return fmt.Errorf("not enough free space: %.1f GB of files plus %.1f GB of backup to download plus %.1f GB of apps, %.1f GB free",
 			float64(files)/1e9, float64(repo)/1e9, float64(appBytes)/1e9, float64(free)/1e9)
 	}
 	return nil
+}
+
+// sameVolume reports whether path is on the filesystem home's stat describes.
+func sameVolume(path string, home syscall.Statfs_t) bool {
+	var st syscall.Statfs_t
+	return syscall.Statfs(path, &st) == nil && st.Fsid == home.Fsid
 }
 
 // waitForAppsToQuit holds the restore while an open app could write over the data restored under it.

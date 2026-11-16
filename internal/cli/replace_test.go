@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -594,5 +595,21 @@ func TestReplaceWaitsForOpenAppsLast(t *testing.T) {
 	signIn, admin, quit := strings.Index(out, "sign in to it"), strings.Index(out, "Administrator password"), strings.Index(out, "Quit these apps")
 	if signIn < 0 || admin < 0 || quit < signIn || quit < admin {
 		t.Fatalf("want the apps to quit asked after the App Store and the admin password:\n%s", out)
+	}
+}
+
+func TestSameVolumeTellsDisksApart(t *testing.T) {
+	var home syscall.Statfs_t
+	if err := syscall.Statfs(t.TempDir(), &home); err != nil {
+		t.Fatal(err)
+	}
+	if !sameVolume(t.TempDir(), home) {
+		t.Error("two temp folders must be on the same volume")
+	}
+	if sameVolume("/dev", home) {
+		t.Error("/dev is its own filesystem, a backup there would not fill the home's disk")
+	}
+	if sameVolume(filepath.Join(t.TempDir(), "missing"), home) {
+		t.Error("a path that does not exist is not counted")
 	}
 }
