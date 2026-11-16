@@ -100,6 +100,8 @@ func DefaultExcludes(home string) []string {
 		filepath.Join(home, ".yarn/berry/cache"),
 		"node_modules",
 		"floe-restore-*",
+		// The copy of an app bundle an interrupted replace left beside its target.
+		".*.floe-restore",
 		".venv",
 		"venv",
 		"__pycache__",

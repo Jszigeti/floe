@@ -34,6 +34,9 @@ func TestDefaultConfig(t *testing.T) {
 	if !slices.Contains(c.Scope.Exclude, "floe-restore-*") {
 		t.Fatal("want floe-restore dirs excluded by default")
 	}
+	if !slices.Contains(c.Scope.Exclude, ".*.floe-restore") {
+		t.Fatal("want the copies an interrupted replace left beside an app excluded by default")
+	}
 	if !slices.Contains(c.Scope.Exclude, filepath.Join(home, "Library/Biome")) {
 		t.Fatal("want Library/Biome excluded by default")
 	}
