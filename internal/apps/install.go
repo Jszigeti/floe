@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -50,7 +51,7 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 	rep.bundle(ctx, d, t, brew, p.Brewfile)
 	rep.casks(ctx, d, t, brew, p.Casks)
 	rep.store(ctx, d, t, p.StoreIDs)
-	rep.bundle(ctx, d, t, brew, p.VSCode)
+	rep.bundle(ctx, d, t, brew, p.VSCode, vscodeEnv(d.AppsRoot)...)
 	rep.Missing = missingApps(p.Expected, d.AppsRoot)
 	return rep
 }
@@ -80,7 +81,7 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	return ""
 }
 
-func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string) {
+func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, env ...string) {
 	if file == "" {
 		return
 	}
@@ -91,7 +92,7 @@ func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file st
 		t.finish()
 		return
 	}
-	c := run.Cmd{Name: brew, Args: []string{"bundle", "install", "--file", file}, Env: d.Admin.Env()}
+	c := run.Cmd{Name: brew, Args: []string{"bundle", "install", "--file", file}, Env: append(d.Admin.Env(), env...)}
 	if err := t.run(ctx, d.Runner, c, brewLine); err != nil {
 		failed := brewFailedRe.FindAllStringSubmatch(err.Error(), -1)
 		for _, m := range failed {
@@ -102,6 +103,17 @@ func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file st
 		}
 		rep.Commands = append(rep.Commands, command)
 	}
+}
+
+// vscodeEnv puts VS Code's code on PATH when VS Code is in appsRoot: brew bundle installs the
+// extensions with it, and its cask links it only in some cases, into a folder a shell opened
+// before Homebrew lacks anyway.
+func vscodeEnv(appsRoot string) []string {
+	bin := filepath.Join(appsRoot, "Visual Studio Code.app/Contents/Resources/app/bin")
+	if !fileExists(bin) {
+		return nil
+	}
+	return []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
 }
 
 // reason is the first line c printed on failing, without the command and exit status the

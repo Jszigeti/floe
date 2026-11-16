@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -311,6 +312,31 @@ func TestInstallGivesUpOnAStuckAppStoreApp(t *testing.T) {
 	}
 	if !f.CalledWith("mas", "install", "222") {
 		t.Fatal("the next app must still install")
+	}
+}
+
+func TestInstallFindsVSCodeForItsExtensions(t *testing.T) {
+	f := &run.Fake{}
+	d := testDeps(t, f)
+	installTool(t, d.BrewDirs[0], "brew")
+	bin := filepath.Join(d.AppsRoot, "Visual Studio Code.app/Contents/Resources/app/bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := fullPlan(t)
+	p.Casks, p.StoreIDs = nil, nil
+
+	Install(context.Background(), d, p, nil)
+
+	if len(f.Calls) != 2 {
+		t.Fatalf("calls = %q", callArgs(f))
+	}
+	want := "PATH=" + bin + ":" + os.Getenv("PATH")
+	if !slices.Contains(f.Calls[1].Env, want) {
+		t.Fatalf("the extensions must find VS Code's code: env %q, want %q", f.Calls[1].Env, want)
+	}
+	if slices.ContainsFunc(f.Calls[0].Env, func(e string) bool { return strings.HasPrefix(e, "PATH=") }) {
+		t.Fatalf("only the extensions need it: %q", f.Calls[0].Env)
 	}
 }
 
