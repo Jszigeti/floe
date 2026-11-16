@@ -59,8 +59,8 @@ func TestLatestPicksNewestOfTag(t *testing.T) {
 	if err != nil || snap.ShortID != "apps" || !slices.Equal(snap.Tags, []string{"apps"}) {
 		t.Fatalf("Latest(apps) = %+v, %v", snap, err)
 	}
-	if _, err := newTestClient(f).Latest(context.Background(), "replaced"); err == nil {
-		t.Fatal("want an error when no snapshot carries the tag")
+	if _, err := newTestClient(f).Latest(context.Background(), "replaced"); !errors.Is(err, ErrNoSnapshot) {
+		t.Fatalf("err = %v, want ErrNoSnapshot when no snapshot carries the tag", err)
 	}
 }
 

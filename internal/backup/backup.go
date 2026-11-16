@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -137,6 +138,7 @@ func Run(ctx context.Context, d Deps) error {
 		}
 	}
 	if !skipPrune {
+		dropReplacedTag(ctx, d)
 		// A failed prune must never cost the daily snapshot — warn and continue.
 		if err := d.Client.Forget(ctx, d.Cfg.Retention); err != nil {
 			d.Notify("floe retention failed", err.Error())
@@ -246,6 +248,26 @@ func backupApps(ctx context.Context, d Deps, apps []inventory.App) {
 	case err != nil:
 		d.Log("apps backup failed: %v", err)
 		d.Notify("floe: app backup failed", "Apps that no installer can bring back were not saved: run floe backup in Terminal to see why")
+	}
+}
+
+// replacedKept is how long forget keeps the snapshot a new Mac was restored from, so the old Mac's
+// Mail, Messages and keychain stay reachable after it is gone.
+const replacedKept = 365 * 24 * time.Hour
+
+// dropReplacedTag hands the snapshots replaced over a year ago back to the retention policy.
+func dropReplacedTag(ctx context.Context, d Deps) {
+	snaps, err := d.Client.Snapshots(ctx)
+	if err != nil {
+		d.Log("reading snapshots for the replaced tag failed: %v", err)
+		return
+	}
+	for _, s := range snaps {
+		if slices.Contains(s.Tags, "replaced") && d.Now().Sub(s.Time) > replacedKept {
+			if _, err := d.Client.Tag(ctx, s.ShortID, nil, []string{"replaced"}); err != nil {
+				d.Log("untagging replaced snapshot %s failed: %v", s.ShortID, err)
+			}
+		}
 	}
 }
 

@@ -85,3 +85,34 @@ func TestListedAppsMatchesCasksAndStoreIDs(t *testing.T) {
 }
 
 // fullPlan is a plan with one entry of each kind, its filtered Brewfiles written in a temp dir.
+
+func TestPlanNeedsAdminOnlyForWhatCallsSudo(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	recipe, brewDir := t.TempDir(), t.TempDir()
+	formulae := filepath.Join(recipe, "Brewfile.formulae")
+	writeFile(t, formulae, "tap \"supabase/tap\"\nbrew \"jq\"\n", 0o644)
+	casks := filepath.Join(recipe, "Brewfile.casks")
+	writeFile(t, casks, "brew \"jq\"\ncask \"zed\"\n", 0o644)
+	if (Plan{}).NeedsAdmin(nil) {
+		t.Fatal("nothing to install needs no password")
+	}
+	if !(Plan{Brewfile: formulae}).NeedsAdmin(nil) {
+		t.Fatal("installing Homebrew needs the password")
+	}
+	installTool(t, brewDir, "brew")
+	dirs := []string{brewDir}
+	for _, c := range []struct {
+		name string
+		plan Plan
+		want bool
+	}{
+		{"formulae", Plan{Brewfile: formulae, VSCode: formulae}, false},
+		{"brewfile cask", Plan{Brewfile: casks}, true},
+		{"inventory cask", Plan{Casks: []string{"zed"}}, true},
+		{"app store", Plan{StoreIDs: []string{"409183694"}}, true},
+	} {
+		if got := c.plan.NeedsAdmin(dirs); got != c.want {
+			t.Errorf("%s: NeedsAdmin = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

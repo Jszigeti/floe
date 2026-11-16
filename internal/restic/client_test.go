@@ -181,11 +181,27 @@ func TestTagUntagged(t *testing.T) {
 
 func TestTagBuildsArgs(t *testing.T) {
 	f := &run.Fake{}
-	if err := newTestClient(f).Tag(context.Background(), "abc", []string{"replaced"}, []string{"home"}); err != nil {
-		t.Fatal(err)
+	id, err := newTestClient(f).Tag(context.Background(), "abc", []string{"replaced"}, []string{"home"})
+	if err != nil || id != "abc" {
+		t.Fatalf("Tag = %q, %v, want the same id when nothing changed", id, err)
 	}
-	want := []string{"tag", "--add", "replaced", "--remove", "home", "abc"}
+	want := []string{"tag", "--json", "--add", "replaced", "--remove", "home", "abc"}
 	if !slices.Equal(f.Calls[0].Args, want) {
 		t.Fatalf("args = %q, want %q", f.Calls[0].Args, want)
+	}
+}
+
+// restic writes a tagged snapshot under a new id and removes the old one.
+func TestTagReturnsTheNewID(t *testing.T) {
+	f := &run.Fake{Default: run.Response{Out: `{"message_type":"changed","old_snapshot_id":"36dd84e1aa","new_snapshot_id":"7859b457bb"}
+{"message_type":"summary","changed_snapshots":1}
+`}}
+	id, err := newTestClient(f).Tag(context.Background(), "36dd84e1", []string{"replaced"}, nil)
+	if err != nil || id != "7859b457bb" {
+		t.Fatalf("Tag = %q, %v, want the new id", id, err)
+	}
+	f = &run.Fake{Default: run.Response{Err: errors.New("locked")}}
+	if _, err := newTestClient(f).Tag(context.Background(), "36dd84e1", []string{"replaced"}, nil); err == nil {
+		t.Fatal("want restic's error")
 	}
 }

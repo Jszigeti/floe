@@ -864,3 +864,38 @@ func TestDigestRepeatsIncompleteRecipe(t *testing.T) {
 		t.Fatalf("digest = %v, want the incomplete recipe repeated", n.msgs)
 	}
 }
+
+func TestForgetDropsReplacedTagAfterAYear(t *testing.T) {
+	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	snaps := fmt.Sprintf(`[{"time":%q,"short_id":"old1","tags":["home","replaced"]},
+		{"time":%q,"short_id":"new1","tags":["home","replaced"]},
+		{"time":%q,"short_id":"home1","tags":["home"]}]`,
+		now.AddDate(-1, 0, -1).Format(time.RFC3339), now.AddDate(0, -6, 0).Format(time.RFC3339), now.AddDate(-2, 0, 0).Format(time.RFC3339))
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "snapshots" {
+			return snaps, nil
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+	d.Now = func() time.Time { return now }
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	var tagged []string
+	forgetAt, tagAt := -1, -1
+	for i, c := range f.Calls {
+		switch {
+		case len(c.Args) > 0 && c.Args[0] == "tag" && slices.Contains(c.Args, "--remove"):
+			tagged, tagAt = append(tagged, strings.Join(c.Args, " ")), i
+		case len(c.Args) > 0 && c.Args[0] == "forget":
+			forgetAt = i
+		}
+	}
+	if !slices.Equal(tagged, []string{"tag --json --remove replaced old1"}) {
+		t.Fatalf("tag calls = %q, want only the snapshot replaced over a year ago", tagged)
+	}
+	if forgetAt < tagAt {
+		t.Fatal("the tag must go before forget runs, or forget keeps the snapshot one more day")
+	}
+}

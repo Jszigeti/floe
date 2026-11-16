@@ -2,11 +2,13 @@ package restic
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -106,17 +108,30 @@ func (c *Client) TagUntagged(ctx context.Context, tag string) error {
 	return err
 }
 
-// Tag adds and removes tags on snapshot id.
-func (c *Client) Tag(ctx context.Context, id string, add, remove []string) error {
-	args := []string{"tag"}
+// Tag adds and removes tags on snapshot id and returns its id afterwards: restic writes a
+// retagged snapshot under a new id, and keeps the id when nothing changed.
+func (c *Client) Tag(ctx context.Context, id string, add, remove []string) (string, error) {
+	args := []string{"tag", "--json"}
 	for _, t := range add {
 		args = append(args, "--add", t)
 	}
 	for _, t := range remove {
 		args = append(args, "--remove", t)
 	}
-	_, err := c.run(ctx, append(args, id)...)
-	return err
+	out, err := c.run(ctx, append(args, id)...)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		var l struct {
+			MessageType string `json:"message_type"`
+			NewID       string `json:"new_snapshot_id"`
+		}
+		if json.Unmarshal([]byte(line), &l) == nil && l.MessageType == "changed" && l.NewID != "" {
+			return l.NewID, nil
+		}
+	}
+	return id, nil
 }
 
 func classifyBackupErr(err error) error {

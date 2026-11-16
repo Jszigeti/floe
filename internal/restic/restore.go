@@ -15,6 +15,9 @@ import (
 // ErrWrongPassphrase means restic exited 12: the passphrase does not open the repository.
 var ErrWrongPassphrase = errors.New("this passphrase does not open the backup")
 
+// ErrNoSnapshot means no snapshot of the asked kind exists.
+var ErrNoSnapshot = errors.New("the backup has no snapshot yet")
+
 // PartialRestoreError lists the paths, relative to the restored folder, restic could not write.
 type PartialRestoreError struct {
 	Failed []string
@@ -48,7 +51,7 @@ func (c *Client) Latest(ctx context.Context, tag string) (Snapshot, error) {
 	}
 	snaps = slices.DeleteFunc(snaps, func(s Snapshot) bool { return !s.Is(tag) })
 	if len(snaps) == 0 {
-		return Snapshot{}, errors.New("the backup has no snapshot yet")
+		return Snapshot{}, ErrNoSnapshot
 	}
 	return slices.MaxFunc(snaps, func(a, b Snapshot) int { return a.Time.Compare(b.Time) }), nil
 }

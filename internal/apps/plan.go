@@ -66,6 +66,22 @@ func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
 	return p, nil
 }
 
+// NeedsAdmin says whether a step of p calls sudo: the Homebrew installer, a cask, mas. Formulae
+// and editor extensions install as the user.
+func (p Plan) NeedsAdmin(brewDirs []string) bool {
+	if len(p.Casks) > 0 || len(p.StoreIDs) > 0 {
+		return true
+	}
+	if p.Brewfile == "" && p.VSCode == "" {
+		return false
+	}
+	if findTool("brew", brewDirs) == "" {
+		return true
+	}
+	data, _ := os.ReadFile(p.Brewfile) // an unreadable Brewfile installs nothing
+	return slices.ContainsFunc(strings.Split(string(data), "\n"), func(line string) bool { return kind(line) == "cask" })
+}
+
 // ListedApps stands in for the inventory of a backup made before it existed: the
 // applications.txt entries Homebrew has a cask for, and the mas.txt ids.
 func ListedApps(recipeDir string, casks inventory.CaskIndex) []inventory.App {
