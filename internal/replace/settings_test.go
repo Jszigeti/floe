@@ -66,6 +66,9 @@ func TestIsTrace(t *testing.T) {
 		{"LastUpdateDate", "<date>2026-11-01T10:00:00Z</date>", true},
 		{"blob", bigData, true},
 		{"lastHost", "<string>" + oldUUID + "</string>", true},
+		// Finder mirrors the iCloud Drive state in them: carried, they claim a sync this Mac lacks.
+		{"FXICloudDriveDesktop", "<true/>", true},
+		{"FXICloudDriveDocuments", "<true/>", true},
 		{"tilesize", "<integer>36</integer>", false},
 		{"wvous-tl-corner", "<integer>2</integer>", false},
 		{"AppleInterfaceStyle", "<string>Dark</string>", false},

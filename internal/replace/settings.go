@@ -42,9 +42,10 @@ var appleDomains = []Domain{
 
 var traceWords = []string{"Recent", "Window", "Frame", "Date", "Time", "Count", "Last", "UUID", "Identifier", "Token", "History", "Bookmark"}
 
-// IsTrace reports whether a key records what happened on the old Mac rather than a choice the user made.
+// IsTrace reports whether a key records what happened on the old Mac rather than a choice the
+// user made. Finder's FXICloudDrive keys mirror the iCloud Drive state, which a key cannot turn on.
 func IsTrace(key string, value []byte, oldUUID string) bool {
-	if strings.HasPrefix(key, "AK") || slices.ContainsFunc(traceWords, func(w string) bool { return strings.Contains(key, w) }) {
+	if strings.HasPrefix(key, "AK") || strings.HasPrefix(key, "FXICloudDrive") || slices.ContainsFunc(traceWords, func(w string) bool { return strings.Contains(key, w) }) {
 		return true
 	}
 	if oldUUID != "" && bytes.Contains(bytes.ToUpper(value), []byte(strings.ToUpper(oldUUID))) {
