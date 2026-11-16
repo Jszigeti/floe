@@ -286,7 +286,7 @@ func TestRunActionRestartAsks(t *testing.T) {
 	if err := RunAction(context.Background(), f, apps.BrewDirs, r); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Calls) != 1 || f.Calls[0].Name != "/bin/sh" || !slices.Equal(f.Calls[0].Args, []string{"-c", `osascript -e 'tell app "System Events" to restart'`}) {
+	if len(f.Calls) != 1 || f.Calls[0].Name != "/bin/sh" || !slices.Equal(f.Calls[0].Args, []string{"-c", `osascript -e 'tell app "loginwindow" to «event aevtrrst»'`}) {
 		t.Fatalf("calls = %+v", f.Calls)
 	}
 	c := f.Calls[0]
@@ -333,7 +333,7 @@ func TestReportHoldsEveryFailedPath(t *testing.T) {
 	for _, want := range []string{
 		"/Users/bob/Library/Mail/x", "/Users/bob/Documents/locked.pdf",
 		"com.apple.dock: defaults write failed", "CapCut", "ms-python.python", "1451685025", "Python 3.12", "no VS Code", "floe had no administrator password",
-		"mas install 1500855883 361285480", "Pages Creator Studio", `osascript -e 'tell app "System Events" to restart'`,
+		"mas install 1500855883 361285480", "Pages Creator Studio", `osascript -e 'tell app "loginwindow" to «event aevtrrst»'`,
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("report lacks %q:\n%s", want, report)

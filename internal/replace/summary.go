@@ -22,7 +22,8 @@ import (
 const ReportFile = "~/.local/state/floe/replace-report.txt"
 
 const (
-	restartCommand = `osascript -e 'tell app "System Events" to restart'`
+	// loginwindow's restart event needs no Automation permission, where System Events asks for one.
+	restartCommand = `osascript -e 'tell app "loginwindow" to «event aevtrrst»'`
 	// labelWidth keeps a label and its hint within 80 columns; longer name lists go under the label.
 	labelWidth = 50
 	// detailWidth is the room a name list has under its label.
