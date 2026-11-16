@@ -13,7 +13,7 @@ type Cmd struct {
 	Name   string
 	Args   []string
 	Env    []string
-	Stdout io.Writer // when set, output streams here as it's produced, in addition to being captured
+	Stdout io.Writer // when set, output streams here as it's produced instead of being captured, so a long listing never sits in memory
 	// Terminal hands the user's terminal to the command, for an installer that prompts; output is still captured.
 	Terminal bool
 }
@@ -30,7 +30,7 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	if c.Stdout != nil {
-		cmd.Stdout = io.MultiWriter(&stdout, c.Stdout)
+		cmd.Stdout = c.Stdout
 	}
 	cmd.Stderr = &stderr
 	if c.Terminal {
