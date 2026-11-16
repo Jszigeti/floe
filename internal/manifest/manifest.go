@@ -62,7 +62,7 @@ func Dump(ctx context.Context, r run.Runner, dir string, o Options) ([]inventory
 	c.note("keychain-apps.txt", dumpKeychainApps(ctx, r, home, filepath.Join(dir, "keychain-apps.txt")))
 	photos, err := photosICloud(home)
 	c.note("photos-icloud", writeFlag(filepath.Join(dir, "photos-icloud"), photos, err))
-	desktop, err := desktopDocumentsICloud(ctx, r)
+	desktop, err := DesktopDocumentsICloud(ctx, r)
 	c.note("desktop-documents-icloud", writeFlag(filepath.Join(dir, "desktop-documents-icloud"), desktop, err))
 	if err := recordFailures(dir, c.failed, o.Now); err != nil {
 		c.warnings = append(c.warnings, fmt.Sprintf("status.json: %v", err))

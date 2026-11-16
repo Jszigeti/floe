@@ -25,8 +25,8 @@ func photosICloud(home string) (bool, error) {
 	return err == nil, err
 }
 
-// desktopDocumentsICloud reads the Finder key set by "Desktop & Documents Folders"; a missing key means never turned on.
-func desktopDocumentsICloud(ctx context.Context, r run.Runner) (bool, error) {
+// DesktopDocumentsICloud reads the Finder key set by "Desktop & Documents Folders"; a missing key means never turned on.
+func DesktopDocumentsICloud(ctx context.Context, r run.Runner) (bool, error) {
 	out, err := r.Run(ctx, run.Cmd{Name: "defaults", Args: []string{"read", "com.apple.finder", "FXICloudDriveDesktop"}})
 	if err != nil {
 		if strings.Contains(err.Error(), "does not exist") {

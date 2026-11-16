@@ -67,9 +67,11 @@ type Result struct {
 	Partial      []string // files restic could not write, as paths on this Mac
 	RestoreErrs  []error  // restore steps that failed as a whole
 	Apps         apps.Report
+	FromBackup   int // app bundles the apps snapshot brought back
 	Carried      int // Apple settings carried
 	SettingsErrs []error
-	Elapsed      time.Duration
+	// RestoreTook and AppsTook time each task, Elapsed the whole run.
+	RestoreTook, AppsTook, Elapsed time.Duration
 }
 
 // Run restores the home and installs the apps side by side, then carries the Apple settings,
@@ -92,13 +94,15 @@ func Run(ctx context.Context, d RunDeps) (Result, error) {
 	go func() {
 		defer wg.Done()
 		out = restoreAll(ctx, d, tmp)
+		res.RestoreTook = time.Since(start)
 	}()
 	go func() {
 		defer wg.Done()
 		res.Apps = installApps(ctx, d)
+		res.AppsTook = time.Since(start)
 	}()
 	wg.Wait()
-	res.Restored, res.Partial, res.RestoreErrs = out.bytes, out.partial, out.errs
+	res.Restored, res.Partial, res.RestoreErrs, res.FromBackup = out.bytes, out.partial, out.errs, out.bundles
 	// Install counted the apps before the restore brought back the bundles no installer has.
 	res.Apps.Missing = slices.DeleteFunc(res.Apps.Missing, func(name string) bool { return exists(filepath.Join(d.Install.AppsRoot, name)) })
 	res.Carried, res.SettingsErrs = CarrySettings(ctx, d.Runner, out.settings, d.Rule.OldHome, d.NewHome, out.uuid)
@@ -124,6 +128,7 @@ type restoreTask struct {
 	errs     []error
 	settings map[Domain]string // staged plist of each Apple domain the old Mac had
 	uuid     string            // the old Mac's hardware UUID
+	bundles  int               // app bundles moved into place
 }
 
 // restoreAll restores the home, then imports the apps' preferences, then the app bundles.
@@ -189,7 +194,9 @@ func (out *restoreTask) restoreBundle(ctx context.Context, d RunDeps, tmp, folde
 	}
 	if err := os.Rename(staged, target); err != nil {
 		out.errs = append(out.errs, fmt.Errorf("moving %s into place: %w", folder, err))
+		return
 	}
+	out.bundles++
 }
 
 // failed records files, relative to dir, that restic could not write.

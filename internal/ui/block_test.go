@@ -212,7 +212,7 @@ func TestBlockPauseClearsAndResumes(t *testing.T) {
 	}
 }
 
-func TestShortDuration(t *testing.T) {
+func TestDuration(t *testing.T) {
 	cases := map[time.Duration]string{
 		4 * time.Second:                 "4s",
 		time.Minute + 12*time.Second:    "1m 12s",
@@ -224,8 +224,17 @@ func TestShortDuration(t *testing.T) {
 		time.Hour:                       "1h 0m",
 	}
 	for d, want := range cases {
-		if got := short(d); got != want {
-			t.Errorf("short(%v) = %q, want %q", d, got, want)
+		if got := Duration(d); got != want {
+			t.Errorf("Duration(%v) = %q, want %q", d, got, want)
 		}
+	}
+}
+
+func TestDoneLineAlignsItsDuration(t *testing.T) {
+	if got, want := DoneLine("Restored 21.4 GB of files and settings", 41*time.Minute), "✓ Restored 21.4 GB of files and settings            41m"; got != want {
+		t.Errorf("DoneLine = %q, want %q", got, want)
+	}
+	if got := DoneLine("Asked", 0); got != "✓ Asked" {
+		t.Errorf("DoneLine without a duration = %q", got)
 	}
 }

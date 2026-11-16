@@ -376,6 +376,12 @@ func TestRunMovesARestoredBundleIntoPlace(t *testing.T) {
 	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
 		t.Fatalf("Applications = %v, want only both apps", entries)
 	}
+	if res.FromBackup != 1 {
+		t.Fatalf("from the backup = %d, want Zaap alone, the installer brought Pkg", res.FromBackup)
+	}
+	if res.RestoreTook <= 0 || res.AppsTook <= 0 || res.RestoreTook > res.Elapsed || res.AppsTook > res.Elapsed {
+		t.Fatalf("restore took %v, apps %v, run %v: each task's time must be within the run's", res.RestoreTook, res.AppsTook, res.Elapsed)
+	}
 }
 
 func TestRunLeavesAPartialBundleOutForALaterRun(t *testing.T) {

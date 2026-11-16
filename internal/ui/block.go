@@ -53,10 +53,7 @@ func NewBlock(w io.Writer, live bool, now func() time.Time) *Block {
 
 // Done prints a finished step, with its duration when d is not zero, above the live lines.
 func (b *Block) Done(line string, d time.Duration) {
-	text := "✓ " + line
-	if d > 0 {
-		text = fmt.Sprintf("✓ %-*s %s", doneColumn, line, short(d))
-	}
+	text := DoneLine(line, d)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if !b.live {
@@ -211,8 +208,16 @@ func cut(s string, n int) string {
 	return string(runes[:max(n, 0)])
 }
 
-// short formats a duration the way the screen shows it: 4s, 1m 12s, 41m, 2h 5m.
-func short(d time.Duration) string {
+// DoneLine is a finished step as the screen shows it, its duration aligned when d is not zero.
+func DoneLine(line string, d time.Duration) string {
+	if d <= 0 {
+		return "✓ " + line
+	}
+	return fmt.Sprintf("✓ %-*s %s", doneColumn, line, Duration(d))
+}
+
+// Duration formats a duration the way the screen shows it: 4s, 1m 12s, 41m, 2h 5m.
+func Duration(d time.Duration) string {
 	d = d.Truncate(time.Second)
 	switch {
 	case d < time.Minute:
