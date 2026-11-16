@@ -125,7 +125,7 @@ The backup is unrecoverable. There is no reset. Save it in a password manager th
 Yes. Each Mac gets its own repository under `Floe.backup/<hostname>`, so they never collide.
 
 **How do I restore on a new Mac?**
-Install floe, run `floe init` and choose Replace when it finds the old Mac's backup. floe restores your home folder, `~/Library` and the login keychain included, takes over the old Mac's settings, reinstalls your apps from the recipe and continues the same history. Keep your passphrase at hand and grant your terminal Full Disk Access first. If the old Mac still runs, run `floe backup`, then `floe uninstall` on it before you start.
+Install floe, run `floe init` and choose Replace when it finds the old Mac's backup. It asks everything first (passphrase, Full Disk Access, App Store sign-in, administrator password, only what it needs), then you can walk away. It restores your files and your apps' data and settings while it reinstalls your apps, applies the Apple settings you had changed (Dock, Finder, keyboard, trackpad…), and continues the same history. It never touches what belongs to this Mac's session: the keychain, your Apple Account, Mail, Messages and the data macOS creates itself, so nothing asks you to sign in again mid-run. An interrupted run resumes where it stopped on the next `floe init`. It ends with what is left to do, each one a number floe runs for you, and a restart. If the old Mac still runs, run `floe backup`, then `floe uninstall` on it before you start.
 
 ## Uninstall
 

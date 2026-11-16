@@ -6,7 +6,8 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 ### Added
 
-- A new Mac no longer needs Migration Assistant. `floe init` finds the backups already in iCloud and offers to replace the old Mac: it restores the whole home folder, `~/Library` and the login keychain included, takes over the old Mac's settings, reinstalls its apps from the recipe (Homebrew, App Store), lists what needs a hand, and continues the old Mac's history.
+- A new Mac no longer needs Migration Assistant. `floe init` finds the backups already in iCloud and offers to replace the old Mac. Every question comes first, then the run needs no one: it restores the files and the apps' data and settings, reinstalls the apps in the same pass (Homebrew, App Store, apps no installer brings back, from a copy the backup keeps), applies the Apple settings the old Mac had changed, and continues its history. It leaves this Mac's session alone (keychain, Apple Account, Mail, Messages, what macOS creates), shows its progress on one live screen, resumes where it stopped when interrupted, and ends with the actions left, each one floe can run.
+- Every backup also records the installed apps and where each comes from, and keeps a separate copy of the apps no installer can bring back.
 
 ### Changed
 
