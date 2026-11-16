@@ -7,12 +7,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Jszigeti/floe/internal/apps"
 	"github.com/Jszigeti/floe/internal/inventory"
+	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -90,20 +92,62 @@ func keepAwake(ctx context.Context, r run.Runner) (stop func()) {
 	}
 }
 
-// printResult lists what the run left to do by hand.
-func printResult(p prompter, res replace.Result) {
-	p.cmd.Printf("✓ Restored %.1f GB of files\n", float64(res.Restored)/1e9)
-	printAppsReport(p, res.Apps)
-	if len(res.Partial) > 0 {
-		p.cmd.Printf("! %d files could not be restored:\n", len(res.Partial))
-		for _, f := range res.Partial {
-			p.cmd.Printf("    %s\n", f)
+// oldMac is what the recipe says beyond the run: the sessions to sign in to again, the taps to
+// trust, and whether Desktop & Documents followed iCloud Drive there and not here.
+func oldMac(ctx context.Context, r run.Runner, recipe string, list []inventory.App) replace.OldMac {
+	old := replace.OldMac{Apps: list, KeychainApps: readLines(recipe, "keychain-apps.txt"), UntrustedTaps: readLines(recipe, "untrusted-taps.txt")}
+	if readFlag(recipe, "desktop-documents-icloud") {
+		// A state that cannot be read keeps the reminder, which costs nothing when it is on.
+		on, _ := manifest.DesktopDocumentsICloud(ctx, r)
+		old.TurnOnDesktopDocuments = !on
+	}
+	return old
+}
+
+// readLines reads a list of the recipe, none when a backup made before it has no such file.
+func readLines(recipe, name string) []string {
+	data, _ := os.ReadFile(filepath.Join(recipe, name))
+	var lines []string
+	for line := range strings.Lines(string(data)) {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
 		}
 	}
-	for _, err := range res.RestoreErrs {
-		p.cmd.Printf("! %v\n", err)
+	return lines
+}
+
+// offerActions runs each action the user picks, until Enter or the end of the input: without
+// a terminal the summary is the end.
+func offerActions(ctx context.Context, p prompter, r run.Runner, actions []replace.Action) {
+	for {
+		choice, ok := p.answer("Choice, or Enter to quit")
+		if !ok {
+			p.cmd.Println()
+		}
+		if !ok || choice == "" {
+			return
+		}
+		i := slices.IndexFunc(actions, func(a replace.Action) bool { return strings.EqualFold(a.Key, choice) })
+		switch {
+		case i < 0:
+			p.cmd.Println("Type one of the numbers above, R, or Enter to quit.")
+		case actions[i].Command == "":
+			p.cmd.Println("Only you can do this one.")
+		default:
+			p.cmd.Println(outcome(replace.RunAction(ctx, r, apps.BrewDirs, actions[i]), actions[i]))
+		}
 	}
-	for _, err := range res.SettingsErrs {
-		p.cmd.Printf("! Apple setting not carried: %v\n", err)
+}
+
+// outcome is the line after an action ran.
+func outcome(err error, a replace.Action) string {
+	switch {
+	case errors.Is(err, replace.ErrNoHomebrew):
+		return "! Homebrew is still not installed: its download failed, check the internet connection and try again."
+	case err != nil:
+		return "! It did not finish, see the lines above."
+	case a.Key == "R":
+		return "Restarting…"
 	}
+	return "✓ Done: " + a.Label
 }

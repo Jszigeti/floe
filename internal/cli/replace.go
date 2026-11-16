@@ -20,7 +20,7 @@ import (
 )
 
 // recipeFiles are the manifest files a backup carries (see internal/manifest).
-var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt", "apps.json", "photos-icloud", "desktop-documents-icloud"}
+var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt", "apps.json", "photos-icloud", "desktop-documents-icloud", "keychain-apps.txt", "untrusted-taps.txt"}
 
 // runningAppsJXA lists the open apps as "<bundle id>\t<name>" lines. It reads NSWorkspace,
 // which needs no Automation permission.
@@ -79,7 +79,8 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := waitForAppsToQuit(ctx, p, d.Runner); err != nil {
 		return err
 	}
-	defer keepAwake(ctx, d.Runner)()
+	stopAwake := keepAwake(ctx, d.Runner)
+	defer stopAwake()
 
 	// restic writes a retagged snapshot under a new id, which the state pins instead. A snapshot
 	// from before kinds has no tag: home keeps it a home snapshot once it carries replaced.
@@ -114,14 +115,42 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err != nil {
 		return err
 	}
+	// The actions menu waits on the user: no password or wake lock may outlive the run. An action
+	// that needs an administrator asks for the password itself.
+	install.Admin.Close()
+	stopAwake()
+	// The run never reached mas, which may not be on this Mac yet.
 	if len(skipped) > 0 {
-		res.Apps.Commands = append(res.Apps.Commands, "mas install "+strings.Join(skipped, " "))
+		res.Apps.Commands = append(res.Apps.Commands, "brew install mas && mas install "+strings.Join(skipped, " "))
 	}
-	printResult(p, res)
+	actions := replace.Actions(res, oldMac(ctx, d.Runner, recipe, list))
+	report, err := replace.ReportPath()
+	if err == nil {
+		err = replace.WriteReport(report, res, actions)
+	}
+	if err != nil {
+		p.cmd.Printf("! The full report could not be saved: %v\n", err)
+	}
 	if len(res.RestoreErrs) > 0 {
+		replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, false)
 		return errors.New("the replace is not finished: run floe init again to resume")
 	}
-	// Saved only now, so no scheduled backup runs under a restore still writing this home.
+	if err := takeOver(ctx, d.Runner, cfg); err != nil {
+		// What the run left must show even when this Mac could not take the backup over, as a
+		// to-do since floe stops here.
+		replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, false)
+		return err
+	}
+	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n\n", b.Name, formatHour(cfg.Hour))
+	replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, true)
+	offerActions(ctx, p, d.Runner, actions)
+	return nil
+}
+
+// takeOver makes this Mac continue the backup and ends the replace. The config is saved only
+// now, so no scheduled backup runs under a restore still writing this home; the state is
+// cleared before the actions, since a restart ends floe.
+func takeOver(ctx context.Context, r run.Runner, cfg config.Config) error {
 	if err := cfg.Save(); err != nil {
 		return err
 	}
@@ -129,11 +158,9 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err != nil {
 		return err
 	}
-	if err := launchd.Install(ctx, d.Runner, execPath, cfg.Hour); err != nil {
+	if err := launchd.Install(ctx, r, execPath, cfg.Hour); err != nil {
 		return err
 	}
-	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n", b.Name, formatHour(cfg.Hour))
-	p.cmd.Println("Restart this Mac now, so macOS and your apps reload the restored data and settings. Then run `floe doctor`.")
 	return replace.ClearState()
 }
 
@@ -304,23 +331,4 @@ func startAdmin(ctx context.Context, p prompter, r run.Runner) *apps.Admin {
 	}
 	p.cmd.Println("! Going on without it: the apps that need it may ask for your password later.")
 	return nil
-}
-
-// printAppsReport lists what the apps step left to do by hand.
-func printAppsReport(p prompter, rep apps.Report) {
-	if len(rep.BrewFailed) > 0 {
-		p.cmd.Printf("! Homebrew could not install: %s\n", strings.Join(rep.BrewFailed, ", "))
-	}
-	for _, n := range rep.Notes {
-		p.cmd.Printf("! %s\n", n)
-	}
-	if len(rep.Missing) > 0 {
-		p.cmd.Printf("! Reinstall these apps by hand: %s\n", strings.Join(rep.Missing, ", "))
-	}
-	for _, c := range rep.Commands {
-		if len(rep.StoreFailed) > 0 && c == "mas install "+strings.Join(rep.StoreFailed, " ") {
-			p.cmd.Println("! Some App Store apps did not install. If the App Store is signed out, sign in to it, then run the command below.")
-		}
-		p.cmd.Printf("! Run later: %s\n", c)
-	}
 }

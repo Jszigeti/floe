@@ -110,7 +110,7 @@ func TestE2EReplace(t *testing.T) {
 		t.Fatalf("bob's replace failed, exit %d:\n%s", code, out)
 	}
 	mustContain(t, out, "Found a backup")
-	mustContain(t, out, "Restart this Mac")
+	mustContain(t, out, "  R  Restart now")
 
 	got, err := os.ReadFile(filepath.Join(bob, "Documents/notes.txt"))
 	if err != nil || string(got) != "from alice" {

@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
-	"github.com/Jszigeti/floe/internal/apps"
 	"github.com/Jszigeti/floe/internal/askpass"
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/launchd"
@@ -106,7 +106,7 @@ func TestReplaceRestoresTheOldHomeAndTakesOverItsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
-	for _, want := range []string{"Found a backup: MacBook-Air, last saved ", "Choice [1]: ", "Restart this Mac"} {
+	for _, want := range []string{"Found a backup: MacBook-Air, last saved ", "Choice [1]: ", "  R  Restart now\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
@@ -266,8 +266,12 @@ func TestReplaceListsFailedFilesAndGoesOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a partial restore must not stop the next steps: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "1 files could not be restored") || !strings.Contains(out, filepath.Join(home, "Library/Mail/V10/x.emlx")) {
-		t.Fatalf("failed path not listed:\n%s", out)
+	failed := filepath.Join(home, "Library/Mail/V10/x.emlx")
+	if !strings.Contains(out, "Check the file floe could not restore, in the full report") || strings.Contains(out, failed) {
+		t.Fatalf("want the failed file counted on screen, its path in the report only:\n%s", out)
+	}
+	if report, err := os.ReadFile(filepath.Join(home, ".local/state/floe/replace-report.txt")); err != nil || !strings.Contains(string(report), failed) {
+		t.Fatalf("failed path not in the report: %q, %v", report, err)
 	}
 	if cfg, err := config.Load(); err != nil || cfg.Repo != repo || !f.CalledWith("launchctl", "bootstrap") {
 		t.Fatalf("config and schedule must follow a partial restore: %+v, %v", cfg, err)
@@ -351,19 +355,101 @@ func TestReplaceGivesTheAdminPasswordToTheApps(t *testing.T) {
 	}
 }
 
-func TestPrintAppsReportSaysWhyAppsAreLeft(t *testing.T) {
-	p, out := testPrompter("")
-	printAppsReport(p, apps.Report{
-		StoreFailed: []string{"111", "222"},
-		Notes:       []string{"Homebrew needs an administrator password"},
-		Commands:    []string{apps.HomebrewInstall, "mas install 111 222"},
+func TestReplaceEndsWithTheActionsLeft(t *testing.T) {
+	home, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{
+		"mas.txt":                  "409183694  Keynote  (15.2)\n",
+		"keychain-apps.txt":        "Chrome\nSlack\n",
+		"desktop-documents-icloud": "true\n",
+		"pmset -g batt":            "Now drawing from 'AC Power'\n",
 	})
-	want := "! Homebrew needs an administrator password\n" +
-		"! Run later: " + apps.HomebrewInstall + "\n" +
-		"! Some App Store apps did not install. If the App Store is signed out, sign in to it, then run the command below.\n" +
-		"! Run later: mas install 111 222\n"
-	if out.String() != want {
-		t.Fatalf("report:\n%s\nwant:\n%s", out, want)
+	// The destination, the backup, its passphrase, the App Store skipped, then the App Store
+	// action, a choice floe cannot run, a wrong one, and the end of the input.
+	out, err := runInit(f, dest+"\n\npw\ns\n3\n2\n9\nr\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"✓ This Mac now continues MacBook-Air's backup",
+		"✓ Restored 0.0 GB of files and settings",
+		"  1  Sign in again to Chrome and Slack\n",
+		"  2  Turn on Desktop & Documents in iCloud Drive\n",
+		"  3  Sign in to the App Store, then install Keynote   type 3, floe does it\n",
+		"  R  Restart now\n",
+		"Full report: ~/.local/state/floe/replace-report.txt\n",
+		"Only you can do this one.",
+		"Type one of the numbers above, R, or Enter to quit.",
+		"Choice, or Enter to quit: Restarting…\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+	// The App Store was skipped, so nothing installed mas yet.
+	if !f.CalledWith("/bin/sh -c brew install mas && mas install 409183694") {
+		t.Fatalf("the chosen action did not run; calls = %+v", f.Calls)
+	}
+	report, err := os.ReadFile(filepath.Join(home, ".local/state/floe/replace-report.txt"))
+	if err != nil || !strings.Contains(string(report), "mas install 409183694") {
+		t.Fatalf("report = %q, %v", report, err)
+	}
+	if st, ok, _ := replace.LoadState(); ok {
+		t.Fatalf("state = %+v, want it cleared before the actions, a restart may end floe", st)
+	}
+}
+
+// orderRunner logs, in one list with what floe prints, each command and when caffeinate stops.
+// Its caffeinate runs until its context ends, as the real one does.
+type orderRunner struct {
+	*run.Fake
+	mu  sync.Mutex
+	log []string
+}
+
+func (o *orderRunner) add(entry string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.log = append(o.log, entry)
+}
+
+func (o *orderRunner) Run(ctx context.Context, c run.Cmd) (string, error) {
+	if c.Name == "caffeinate" {
+		<-ctx.Done()
+		o.add("caffeinate stopped")
+		return "", ctx.Err()
+	}
+	o.add(filepath.Base(c.Name) + " " + strings.Join(c.Args, " "))
+	return o.Fake.Run(ctx, c)
+}
+
+func (o *orderRunner) Write(p []byte) (int, error) {
+	o.add("out " + string(p))
+	return len(p), nil
+}
+
+func TestReplaceEndsTheAdminRightsAndTheWakeBeforeTheSummary(t *testing.T) {
+	f, dest, _ := appsReplace(t, "s3cret")
+	o := &orderRunner{Fake: f}
+	cmd := Root(Deps{Version: "t", Runner: o})
+	cmd.SetOut(o)
+	cmd.SetIn(strings.NewReader(dest + "\n\npw\ns3cret\n"))
+	cmd.SetArgs([]string{"init"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init: %v\n%q", err, o.log)
+	}
+	at := func(entry string) int {
+		return slices.IndexFunc(o.log, func(e string) bool { return strings.HasPrefix(e, entry) })
+	}
+	var drops []int // sudo -k drops the timestamp before the password is asked, then ends the rights
+	for i, e := range o.log {
+		if e == "sudo -k" {
+			drops = append(drops, i)
+		}
+	}
+	summary := at("out ✓ Restored")
+	if summary < 0 || at("caffeinate stopped") > summary || len(drops) != 2 || drops[1] > summary {
+		t.Fatalf("the menu waits for the user: the password and the wake must end before it\n%q", o.log)
 	}
 }
 
@@ -440,7 +526,7 @@ func TestReplaceAsksForPowerAndCanSkipTheAppStore(t *testing.T) {
 	if !strings.Contains(out, "plug it in and keep its lid open") || !f.CalledWith("open -a App Store") {
 		t.Fatalf("power or App Store step missing:\n%s", out)
 	}
-	if strings.Contains(out, "Administrator password") || !strings.Contains(out, "! Run later: mas install 409183694") {
+	if strings.Contains(out, "Administrator password") || !strings.Contains(out, "Sign in to the App Store, then install Keynote") {
 		t.Fatalf("a skipped App Store must leave its apps for later, with nothing else to install:\n%s", out)
 	}
 }
@@ -530,7 +616,8 @@ func TestReplaceStopsUnfinishedWhenARestoreFails(t *testing.T) {
 	if err == nil || err.Error() != "the replace is not finished: run floe init again to resume" {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "! restoring /Users/alice: ") || strings.Contains(out, "now continues") || strings.Contains(out, "Restart this Mac") {
+	if !strings.Contains(out, "! Part of the backup was not restored:\n  restoring /Users/alice: ") ||
+		strings.Contains(out, "now continues") || strings.Contains(out, "✓ Restored") || strings.Contains(out, "Restart now") {
 		t.Fatalf("want the failed step listed and no success:\n%s", out)
 	}
 	if st, ok, _ := replace.LoadState(); !ok || !st.Restoring {
@@ -541,6 +628,26 @@ func TestReplaceStopsUnfinishedWhenARestoreFails(t *testing.T) {
 	}
 	if pp, _ := launchd.PlistPath(); fileExists(pp) || f.CalledWith("launchctl", "bootstrap") {
 		t.Fatal("schedule installed by an unfinished replace")
+	}
+}
+
+func TestReplaceShowsTheSummaryWhenTheScheduleFails(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	withAnswers(f, map[string]string{"mas.txt": "409183694  Keynote  (15.2)\n"})
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "launchctl" && len(c.Args) > 0 && c.Args[0] == "bootstrap" {
+			return "", errors.New("launchctl bootstrap: Input/output error")
+		}
+		return base(c)
+	}
+	out, err := runInit(f, dest+"\n\npw\ns\n")
+	if err == nil || !strings.Contains(out, "Sign in to the App Store, then install Keynote") || strings.Contains(out, "now continues") {
+		t.Fatalf("a failed schedule must still show what is left: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "floe does it") {
+		t.Fatalf("floe offers no action after a failed schedule, the list is a to-do:\n%s", out)
 	}
 }
 
@@ -608,5 +715,25 @@ func TestSameVolumeTellsDisksApart(t *testing.T) {
 	}
 	if sameVolume(filepath.Join(t.TempDir(), "missing"), home) {
 		t.Error("a path that does not exist is not counted")
+	}
+}
+
+func TestOutcomeSaysWhatTheActionLeft(t *testing.T) {
+	homebrew := replace.Action{Key: "1", Label: "Install Homebrew", Command: "x"}
+	restart := replace.Action{Key: "R", Label: "Restart now", Command: "x"}
+	cases := []struct {
+		err  error
+		a    replace.Action
+		want string
+	}{
+		{replace.ErrNoHomebrew, homebrew, "! Homebrew is still not installed: its download failed, check the internet connection and try again."},
+		{errors.New("exit status 1"), homebrew, "! It did not finish, see the lines above."},
+		{nil, homebrew, "✓ Done: Install Homebrew"},
+		{nil, restart, "Restarting…"},
+	}
+	for _, c := range cases {
+		if got := outcome(c.err, c.a); got != c.want {
+			t.Errorf("outcome(%v, %s) = %q, want %q", c.err, c.a.Key, got, c.want)
+		}
 	}
 }
