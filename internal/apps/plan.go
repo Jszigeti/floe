@@ -83,18 +83,39 @@ func (p Plan) NeedsAdmin(brewDirs []string) bool {
 }
 
 // ListedApps stands in for the inventory of a backup made before it existed: the
-// applications.txt entries Homebrew has a cask for, and the mas.txt ids.
+// applications.txt entries Homebrew has a cask for, and the mas.txt apps, named after their
+// applications.txt entry so the summary knows which bundles they bring back.
 func ListedApps(recipeDir string, casks inventory.CaskIndex) []inventory.App {
+	files := listedApps(filepath.Join(recipeDir, "applications.txt"))
+	var store []inventory.App
+	fromStore := map[string]bool{}
+	for _, e := range masEntries(filepath.Join(recipeDir, "mas.txt")) {
+		name := e.name
+		if file := storeFile(files, e.name); file != "" {
+			fromStore[file], name = true, strings.TrimSuffix(file, ".app")
+		}
+		store = append(store, inventory.App{Name: name, Source: inventory.SourceAppStore, StoreID: e.id})
+	}
 	var list []inventory.App
-	for _, name := range listedApps(filepath.Join(recipeDir, "applications.txt")) {
-		if token, ok := casks[name]; ok {
-			list = append(list, inventory.App{Name: strings.TrimSuffix(name, ".app"), Source: inventory.SourceCask, Cask: token})
+	for _, file := range files {
+		if token, ok := casks[file]; ok && !fromStore[file] {
+			list = append(list, inventory.App{Name: strings.TrimSuffix(file, ".app"), Source: inventory.SourceCask, Cask: token})
 		}
 	}
-	for _, id := range masIDs(filepath.Join(recipeDir, "mas.txt")) {
-		list = append(list, inventory.App{Source: inventory.SourceAppStore, StoreID: id})
+	return append(list, store...)
+}
+
+// storeFile is the bundle of the App Store app called name: its own name, or a longer one as
+// macOS 26 gives Keynote ("Keynote Creator Studio.app"); "" when none.
+func storeFile(files []string, name string) string {
+	if slices.Contains(files, name+".app") {
+		return name + ".app"
 	}
-	return list
+	i := slices.IndexFunc(files, func(f string) bool { return strings.HasPrefix(f, name+" ") && strings.HasSuffix(f, ".app") })
+	if i < 0 {
+		return ""
+	}
+	return files[i]
 }
 
 // kind is a Brewfile line's first word, "" for a blank line or a comment.

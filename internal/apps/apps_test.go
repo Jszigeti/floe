@@ -50,6 +50,7 @@ func TestInstallRunsBrewThenCasksThenStoreThenVSCode(t *testing.T) {
 	installTool(t, d.BrewDirs[0], "brew")
 	installTool(t, d.BrewDirs[0], "mas")
 	p := fullPlan(t)
+	writeFile(t, p.Brewfile, "brew \"jq\"\ncask \"arc\"\n", 0o644)
 
 	rep := Install(context.Background(), d, p, nil)
 
@@ -66,6 +67,9 @@ func TestInstallRunsBrewThenCasksThenStoreThenVSCode(t *testing.T) {
 	}
 	if len(rep.Commands) != 0 || len(rep.BrewFailed) != 0 || len(rep.StoreFailed) != 0 {
 		t.Fatalf("report = %+v", rep)
+	}
+	if rep.FromHomebrew != 2 || rep.FromAppStore != 1 {
+		t.Fatalf("installed %d from Homebrew and %d from the App Store, want arc and zed, jq being no app, then 111", rep.FromHomebrew, rep.FromAppStore)
 	}
 }
 
@@ -156,8 +160,8 @@ func TestInstallSkipsHomebrewWithoutAnAdmin(t *testing.T) {
 	if !slices.Equal(rep.Commands, want) || !slices.Equal(rep.Missing, []string{"Zed.app"}) {
 		t.Fatalf("report = %+v", rep)
 	}
-	if !slices.Equal(rep.Notes, []string{"Homebrew needs an administrator password"}) {
-		t.Fatalf("notes = %q", rep.Notes)
+	if rep.Homebrew != "floe had no administrator password" || len(rep.Notes) != 0 {
+		t.Fatalf("Homebrew = %q, notes = %q, want the reason said once", rep.Homebrew, rep.Notes)
 	}
 }
 
@@ -166,10 +170,10 @@ func TestInstallJudgesHomebrewByTheBrewItLeaves(t *testing.T) {
 		name      string
 		leaveBrew bool
 		stderr    string // empty: the installer exits 0
-		notes     []string
+		why       string
 	}{
-		{name: "download failed, bash exits 0", notes: []string{"Homebrew did not install, check the internet connection"}},
-		{name: "installer failed", stderr: "Need sudo access on macOS!\nmore", notes: []string{"Homebrew did not install: Need sudo access on macOS!"}},
+		{name: "download failed, bash exits 0", why: "its download failed, check the internet connection"},
+		{name: "installer failed", stderr: "Need sudo access on macOS!\nmore", why: "its installer failed: Need sudo access on macOS!"},
 		{name: "installer failed after installing brew", leaveBrew: true, stderr: "Warning: /opt/homebrew/bin is not in your PATH."},
 	}
 	for _, tc := range cases {
@@ -199,8 +203,8 @@ func TestInstallJudgesHomebrewByTheBrewItLeaves(t *testing.T) {
 			} else if !slices.Equal(rep.Commands, []string{HomebrewInstall, "brew install --cask zed"}) {
 				t.Fatalf("commands = %q", rep.Commands)
 			}
-			if !slices.Equal(rep.Notes, tc.notes) {
-				t.Fatalf("notes = %q, want %q", rep.Notes, tc.notes)
+			if rep.Homebrew != tc.why || len(rep.Notes) != 0 {
+				t.Fatalf("Homebrew = %q, notes = %q, want %q", rep.Homebrew, rep.Notes, tc.why)
 			}
 		})
 	}
@@ -348,6 +352,7 @@ func TestInstallParsesHomebrew7Failures(t *testing.T) {
 	p := fullPlan(t)
 	p.Casks = []string{"zed", "arc"}
 	p.StoreIDs = []string{"111", "222"}
+	writeFile(t, p.Brewfile, "brew \"jq\"\ncask \"capcut\"\ncask \"rectangle\"\n", 0o644)
 	f.Handler = func(c run.Cmd) (string, error) {
 		switch {
 		case c.Name == brew && c.Args[0] == "bundle" && c.Args[3] == p.Brewfile:
@@ -368,6 +373,9 @@ func TestInstallParsesHomebrew7Failures(t *testing.T) {
 	want := []string{"brew bundle install --file " + p.Brewfile, "brew install --cask arc", "mas install 222"}
 	if !slices.Equal(rep.Commands, want) {
 		t.Fatalf("commands = %q, want %q", rep.Commands, want)
+	}
+	if rep.FromHomebrew != 2 || rep.FromAppStore != 1 {
+		t.Fatalf("installed %d from Homebrew and %d from the App Store, want rectangle and zed, then 111", rep.FromHomebrew, rep.FromAppStore)
 	}
 }
 
@@ -466,11 +474,11 @@ func TestFindToolPrefersPath(t *testing.T) {
 	}
 }
 
-func TestMasIDsKeepsNumericIDsOnly(t *testing.T) {
+func TestMasEntriesKeepsNumericIDsOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mas.txt")
-	writeFile(t, path, "111  Keynote  (15.2)\n\nNo installed apps found\n 222  Numbers  (15.2)\n", 0o644)
-	if got := masIDs(path); !slices.Equal(got, []string{"111", "222"}) {
-		t.Fatalf("masIDs = %q", got)
+	writeFile(t, path, "111  Keynote  (15.2)\n\nNo installed apps found\n 222  Tempus Stopwatch  (2026.2)\n", 0o644)
+	if got := masEntries(path); !slices.Equal(got, []masEntry{{"111", "Keynote"}, {"222", "Tempus Stopwatch"}}) {
+		t.Fatalf("masEntries = %q", got)
 	}
 }
 

@@ -70,14 +70,17 @@ func TestPlanFromWithoutBrewfile(t *testing.T) {
 
 func TestListedAppsMatchesCasksAndStoreIDs(t *testing.T) {
 	recipe := t.TempDir()
-	writeFile(t, filepath.Join(recipe, "applications.txt"), "Google Chrome.app\n.DS_Store\nZed.app\n", 0o644)
-	writeFile(t, filepath.Join(recipe, "mas.txt"), "111  Keynote  (15.2)\n", 0o644)
+	writeFile(t, filepath.Join(recipe, "applications.txt"), "Google Chrome.app\n.DS_Store\nZed.app\nKeynote Creator Studio.app\nWireGuard.app\nPython 3.12\n", 0o644)
+	writeFile(t, filepath.Join(recipe, "mas.txt"), " 111  Keynote           (15.2)\n222  WireGuard  (1.0.16)\n333  CapCut  (9.7.1)\n", 0o644)
 
-	got := ListedApps(recipe, inventory.CaskIndex{"Google Chrome.app": "google-chrome"})
+	got := ListedApps(recipe, inventory.CaskIndex{"Google Chrome.app": "google-chrome", "WireGuard.app": "wireguard"})
 
+	// The App Store wins over a cask, as in the inventory; macOS 26 names Keynote's bundle after its suite.
 	want := []inventory.App{
 		{Name: "Google Chrome", Source: inventory.SourceCask, Cask: "google-chrome"},
-		{Source: inventory.SourceAppStore, StoreID: "111"},
+		{Name: "Keynote Creator Studio", Source: inventory.SourceAppStore, StoreID: "111"},
+		{Name: "WireGuard", Source: inventory.SourceAppStore, StoreID: "222"},
+		{Name: "CapCut", Source: inventory.SourceAppStore, StoreID: "333"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ListedApps = %+v, want %+v", got, want)

@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,7 +50,7 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 	if brew == "" && (p.Brewfile != "" || p.VSCode != "" || len(p.Casks) > 0) {
 		brew = rep.homebrew(ctx, d, t)
 	}
-	rep.bundle(ctx, d, t, brew, p.Brewfile)
+	rep.FromHomebrew = rep.bundle(ctx, d, t, brew, p.Brewfile)
 	rep.casks(ctx, d, t, brew, p.Casks)
 	rep.store(ctx, d, t, p.StoreIDs)
 	rep.bundle(ctx, d, t, brew, p.VSCode, vscodeEnv(d.AppsRoot)...)
@@ -62,7 +64,7 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	if d.Admin == nil {
 		rep.Commands = append(rep.Commands, HomebrewInstall)
-		rep.Notes = append(rep.Notes, "Homebrew needs an administrator password")
+		rep.Homebrew = "floe had no administrator password"
 		return ""
 	}
 	t.step(0, "Homebrew")
@@ -73,43 +75,70 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	}
 	rep.Commands = append(rep.Commands, HomebrewInstall)
 	// The installer exits 0 when its own download fails, so a missing brew with no error means no network.
-	note := "Homebrew did not install, check the internet connection"
+	rep.Homebrew = "its download failed, check the internet connection"
 	if err != nil {
-		note = "Homebrew did not install: " + reason(installer, err)
+		rep.Homebrew = "its installer failed: " + reason(installer, err)
 	}
-	rep.Notes = append(rep.Notes, note)
 	return ""
 }
 
-func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, env ...string) {
+// bundle installs file's entries and returns how many of its casks, the apps, are in place:
+// none when brew bundle failed without naming its failures.
+func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, env ...string) int {
 	if file == "" {
-		return
+		return 0
 	}
 	t.step(entries(file), "")
 	command := "brew bundle install --file " + file
 	if brew == "" {
 		rep.Commands = append(rep.Commands, command)
 		t.finish()
-		return
+		return 0
 	}
 	c := run.Cmd{Name: brew, Args: []string{"bundle", "install", "--file", file}, Env: append(d.Admin.Env(), env...)}
-	if err := t.run(ctx, d.Runner, c, brewLine); err != nil {
-		failed := brewFailedRe.FindAllStringSubmatch(err.Error(), -1)
-		for _, m := range failed {
-			rep.BrewFailed = append(rep.BrewFailed, strings.TrimSpace(m[1]+m[2]))
-		}
-		if len(failed) == 0 {
-			rep.Notes = append(rep.Notes, fmt.Sprintf("brew bundle failed on %s: %s", filepath.Base(file), reason(c, err)))
-		}
-		rep.Commands = append(rep.Commands, command)
+	err := t.run(ctx, d.Runner, c, brewLine)
+	casks := casksIn(file)
+	if err == nil {
+		return len(casks)
 	}
+	rep.Commands = append(rep.Commands, command)
+	var failed []string
+	for _, m := range brewFailedRe.FindAllStringSubmatch(err.Error(), -1) {
+		failed = append(failed, strings.TrimSpace(m[1]+m[2]))
+	}
+	rep.BrewFailed = append(rep.BrewFailed, failed...)
+	if len(failed) == 0 {
+		rep.Notes = append(rep.Notes, fmt.Sprintf("brew bundle failed on %s: %s", filepath.Base(file), reason(c, err)))
+		return 0
+	}
+	// Homebrew names a failed cask by its token or by its app's name, in any case.
+	return len(slices.DeleteFunc(casks, func(c string) bool {
+		return slices.ContainsFunc(failed, func(f string) bool { return strings.EqualFold(f, c) })
+	}))
+}
+
+// casksIn lists the cask tokens of a Brewfile.
+func casksIn(file string) []string {
+	data, _ := os.ReadFile(file) // an unreadable Brewfile installed nothing
+	var casks []string
+	for line := range strings.Lines(string(data)) {
+		if m := caskLineRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			casks = append(casks, path.Base(m[1]))
+		}
+	}
+	return casks
+}
+
+// VSCodeBin is where VS Code keeps its code command, which installs its extensions.
+func VSCodeBin(appsRoot string) string {
+	return filepath.Join(appsRoot, "Visual Studio Code.app/Contents/Resources/app/bin")
 }
 
 // vscodeEnv puts VS Code's code on PATH when VS Code is in appsRoot: brew bundle installs the
 // extensions with it, and its cask links it only in some cases, into a folder a shell opened
 // before Homebrew lacks anyway.
 func vscodeEnv(appsRoot string) []string {
-	bin := filepath.Join(appsRoot, "Visual Studio Code.app/Contents/Resources/app/bin")
+	bin := VSCodeBin(appsRoot)
 	if !fileExists(bin) {
 		return nil
 	}
@@ -142,6 +171,8 @@ func (rep *Report) casks(ctx context.Context, d Deps, t *tracker, brew string, c
 		if err := t.run(ctx, d.Runner, run.Cmd{Name: brew, Args: []string{"install", "--cask", "--adopt", c}, Env: d.Admin.Env()}, brewLine); err != nil {
 			rep.BrewFailed = append(rep.BrewFailed, c)
 			left = append(left, c)
+		} else {
+			rep.FromHomebrew++
 		}
 	}
 	if len(left) > 0 {
@@ -172,6 +203,8 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 		stop()
 		if err != nil {
 			rep.StoreFailed = append(rep.StoreFailed, id)
+		} else {
+			rep.FromAppStore++
 		}
 	}
 	if len(rep.StoreFailed) > 0 {

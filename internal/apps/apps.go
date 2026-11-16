@@ -37,8 +37,11 @@ type Report struct {
 	BrewFailed  []string // Brewfile entries and casks Homebrew could not install
 	StoreFailed []string // App Store ids mas could not install
 	Missing     []string // Expected entries still absent from AppsRoot
-	Commands    []string // commands to run by hand later
+	Commands    []string // commands left, offered as end-of-replace actions and saved in the report
 	Notes       []string // why a step left a command, when no failed entry says it
+	Homebrew    string   // why Homebrew is missing, "" when it is there
+	// Apps installed or already there, per source: casks and App Store ids, not formulae or extensions.
+	FromHomebrew, FromAppStore int
 }
 
 // entries counts what a Brewfile installs: every line but taps, blanks and comments.
@@ -77,21 +80,26 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// masIDs reads the app ids of `mas list` output, "497799835  Xcode  (15.0)".
-func masIDs(path string) []string {
+type masEntry struct{ id, name string }
+
+// masEntries reads `mas list` output, "497799835  Xcode  (15.0)".
+func masEntries(path string) []masEntry {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	var ids []string
+	var list []masEntry
 	for _, line := range strings.Split(string(data), "\n") {
-		if f := strings.Fields(line); len(f) > 0 {
-			if _, err := strconv.Atoi(f[0]); err == nil {
-				ids = append(ids, f[0])
-			}
+		id, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
+		if _, err := strconv.Atoi(id); err != nil {
+			continue
 		}
+		if i := strings.LastIndex(rest, "("); i > 0 {
+			rest = rest[:i]
+		}
+		list = append(list, masEntry{id, strings.TrimSpace(rest)})
 	}
-	return ids
+	return list
 }
 
 // missingApps lists the names absent from appsRoot.
