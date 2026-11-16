@@ -51,12 +51,12 @@ func TestReplaceKeepsItsStateUntilItEnds(t *testing.T) {
 	open := true
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") && open {
-			return "Safari\n", nil
+			return "com.tinyspeck.slackmacgap\tSlack\n", nil
 		}
 		return base(c)
 	}
 	if _, err := runInit(f, dest+"\n\npw\n"); err == nil {
-		t.Fatal("want a stop while Safari is open")
+		t.Fatal("want a stop while Slack is open")
 	}
 	st, ok, err := replace.LoadState()
 	if err != nil || !ok || st.Backup != "MacBook-Air" || st.Repo != repo || st.SnapshotID != "bbb222" || st.OldHome != "/Users/alice" || st.Started.IsZero() {
@@ -214,12 +214,12 @@ func TestReplacePinsTheAppsSnapshotWithTheHomeOne(t *testing.T) {
 	base := f.Handler
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
-			return "Safari\n", nil
+			return "com.tinyspeck.slackmacgap\tSlack\n", nil
 		}
 		return base(c)
 	}
 	if _, err := runInit(f, dest+"\n\npw\n"); err == nil {
-		t.Fatal("want a stop while Safari is open")
+		t.Fatal("want a stop while Slack is open")
 	}
 	if st, ok, err := replace.LoadState(); err != nil || !ok || st.AppsSnapshotID != "ccc333" {
 		t.Fatalf("state = %+v, %v, %v, want the apps snapshot pinned", st, ok, err)

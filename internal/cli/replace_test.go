@@ -219,25 +219,22 @@ func TestReplaceStopsWhenTheDiskIsTooSmall(t *testing.T) {
 
 func TestReplaceWaitsForOpenApps(t *testing.T) {
 	_, dest, _ := startReplace(t)
-	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
+	t.Setenv("__CFBundleIdentifier", "com.googlecode.iterm2")
 	f := replaceFake(nil, "1000")
 	base := f.Handler
 	listed := 0
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
-			if got := c.Args[len(c.Args)-1]; got != "com.apple.Terminal" {
-				t.Errorf("apps listed sparing %q, want the terminal floe runs in", got)
-			}
 			listed++
 			if listed == 1 {
-				return "Safari\nMail\n", nil
+				return "com.googlecode.iterm2\tiTerm2\ncom.apple.AppStore\tApp Store\ncom.tinyspeck.slackmacgap\tSlack\ncom.spotify.client\tSpotify\n", nil
 			}
-			return "", nil
+			return "com.apple.Safari\tSafari\n", nil
 		}
 		return base(c)
 	}
 	out, err := runInit(f, dest+"\n\npw\n\n")
-	if err != nil || !strings.Contains(out, "Safari, Mail") || resticCall(f, "restore") == nil {
+	if err != nil || !strings.Contains(out, "rewrites their data: Slack, Spotify\n") || resticCall(f, "restore") == nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
 }
@@ -248,7 +245,7 @@ func TestReplaceStopsWhileAppsStayOpen(t *testing.T) {
 	base := f.Handler
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
-			return "Safari\n", nil
+			return "com.tinyspeck.slackmacgap\tSlack\n", nil
 		}
 		return base(c)
 	}
@@ -581,7 +578,7 @@ func TestReplaceWaitsForOpenAppsLast(t *testing.T) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
 			listed++
 			if listed == 1 {
-				return "Safari\n", nil
+				return "com.tinyspeck.slackmacgap\tSlack\n", nil
 			}
 			return "", nil
 		}

@@ -22,14 +22,13 @@ import (
 // recipeFiles are the manifest files a backup carries (see internal/manifest).
 var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt", "apps.json", "photos-icloud", "desktop-documents-icloud"}
 
-// runningAppsJXA lists the open apps but Finder and the one whose bundle id it is given, the
-// terminal floe runs in. It reads NSWorkspace, which needs no Automation permission.
+// runningAppsJXA lists the open apps as "<bundle id>\t<name>" lines. It reads NSWorkspace,
+// which needs no Automation permission.
 const runningAppsJXA = `ObjC.import("AppKit");
-function run(argv) {
+function run() {
   return $.NSWorkspace.sharedWorkspace.runningApplications.js
     .filter(a => a.activationPolicy == $.NSApplicationActivationPolicyRegular)
-    .filter(a => a.bundleIdentifier.js != argv[0] && a.localizedName.js != "Finder")
-    .map(a => a.localizedName.js)
+    .map(a => a.bundleIdentifier.js + "\t" + a.localizedName.js)
     .join("\n");
 }`
 
@@ -214,13 +213,11 @@ func sameVolume(path string, home syscall.Statfs_t) bool {
 // waitForAppsToQuit holds the restore while an open app could write over the data restored under it.
 func waitForAppsToQuit(ctx context.Context, p prompter, r run.Runner) error {
 	for {
-		// macOS gives every process an app launches that app's bundle id, here the terminal's.
-		terminal := os.Getenv("__CFBundleIdentifier")
-		out, err := r.Run(ctx, run.Cmd{Name: "osascript", Args: []string{"-l", "JavaScript", "-e", runningAppsJXA, terminal}})
+		out, err := r.Run(ctx, run.Cmd{Name: "osascript", Args: []string{"-l", "JavaScript", "-e", runningAppsJXA}})
 		if err != nil {
 			return fmt.Errorf("listing open apps: %w", err)
 		}
-		open := strings.FieldsFunc(out, func(c rune) bool { return c == '\n' })
+		open := appsToQuit(out, os.Getenv("__CFBundleIdentifier"))
 		if len(open) == 0 {
 			return nil
 		}
@@ -229,6 +226,19 @@ func waitForAppsToQuit(ctx context.Context, p prompter, r run.Runner) error {
 			return errors.New("stopped before restoring: quit your open apps, then run floe init again")
 		}
 	}
+}
+
+// appsToQuit keeps the open apps whose data the restore rewrites: neither Apple's, whose data
+// stays this Mac's, nor the terminal floe runs in, whose bundle id macOS gives every process it launches.
+func appsToQuit(list, terminal string) []string {
+	var names []string
+	for line := range strings.Lines(list) {
+		id, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if ok && id != terminal && !strings.HasPrefix(id, "com.apple.") {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // dumpRecipe copies the old Mac's app recipe out of the snapshot into ~/.local/state/floe/recipe,
