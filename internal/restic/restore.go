@@ -76,10 +76,11 @@ func parseTotalSize(out string) (int64, error) {
 }
 
 // RestoreStatus is how far a restore is, in bytes: Done counts restored and skipped bytes, Total
-// the bytes to restore plus the skipped ones. Loading means restic has not counted any file yet.
+// the bytes to restore plus the skipped ones, Skipped the bytes already in place, which a resume
+// skips at once. Loading means restic has not counted any file yet.
 type RestoreStatus struct {
-	Done, Total int64
-	Loading     bool
+	Done, Total, Skipped int64
+	Loading              bool
 }
 
 // restoreLine is one line of `restore --json`: a status or summary on stdout, an error on stderr.
@@ -101,7 +102,7 @@ func (c *Client) RestoreFolder(ctx context.Context, id, folder, target, excludeF
 			return
 		}
 		total := l.TotalBytes + l.BytesSkipped
-		status(RestoreStatus{Done: l.BytesRestored + l.BytesSkipped, Total: total, Loading: total == 0})
+		status(RestoreStatus{Done: l.BytesRestored + l.BytesSkipped, Total: total, Skipped: l.BytesSkipped, Loading: total == 0})
 	}}
 	_, err := c.R.Run(ctx, run.Cmd{
 		Name:   c.Bin,

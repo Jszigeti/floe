@@ -12,6 +12,7 @@ type Stall struct {
 	Now   func() time.Time
 	last  int64
 	since time.Time
+	total int64 // the restore's last total
 }
 
 // Seen records progress, the work done so far, and returns how long it has not moved once that
@@ -29,10 +30,13 @@ func (s *Stall) Seen(progress int64) (stalledFor time.Duration) {
 }
 
 // SeenRestore is Seen for a restore: while restic loads the backup's index nothing moves, which is
-// no stall, and the wait starts over once files come.
+// no stall, and the wait starts over once files come. A total that grows is restic walking the
+// backup's tree before it restores anything: a sign of life too.
 func (s *Stall) SeenRestore(st restic.RestoreStatus) (stalledFor time.Duration) {
+	if st.Loading || st.Total != s.total {
+		s.since, s.total = time.Time{}, st.Total
+	}
 	if st.Loading {
-		s.since = time.Time{}
 		return 0
 	}
 	return s.Seen(st.Done)

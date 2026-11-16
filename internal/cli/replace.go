@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Jszigeti/floe/internal/apps"
 	"github.com/Jszigeti/floe/internal/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
+	"github.com/Jszigeti/floe/internal/ui"
 )
 
 // recipeFiles are the manifest files a backup carries (see internal/manifest).
@@ -40,6 +42,11 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err != nil {
 		return err
 	}
+	start := time.Now()
+	progress := p.cmd.ErrOrStderr()
+	live := liveScreen(progress)
+	block := ui.NewBlock(progress, live, time.Now)
+	d.Runner = pausing{Runner: d.Runner, block: block}
 	client := &restic.Client{Bin: bin, Repo: b.Path, R: d.Runner, Progress: p.cmd.OutOrStdout()}
 	if err := askBackupPassphrase(ctx, p, d.Runner, client, b.Name); err != nil {
 		return err
@@ -48,6 +55,8 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err != nil {
 		return err
 	}
+	block.Done("Found the backup, passphrase checked", time.Since(start))
+	start = time.Now()
 	if err := waitForFullDiskAccess(p, home); err != nil {
 		return err
 	}
@@ -69,7 +78,7 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 			return err
 		}
 	}
-	askForPower(ctx, p, d.Runner)
+	power := askForPower(ctx, p, d.Runner)
 	skipped := openAppStore(ctx, p, d.Runner, &plan)
 	install := apps.Deps{Runner: d.Runner, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
 	if plan.NeedsAdmin(apps.BrewDirs) {
@@ -79,6 +88,7 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := waitForAppsToQuit(ctx, p, d.Runner); err != nil {
 		return err
 	}
+	block.Done(ready(len(plan.StoreIDs) > 0, install.Admin != nil), time.Since(start))
 	stopAwake := keepAwake(ctx, d.Runner)
 	defer stopAwake()
 
@@ -103,15 +113,19 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	}
 
 	p.cmd.Printf("→ Restoring %s into %s while its apps install, this takes a while…\n", b.Name, home)
+	status := &replace.Status{}
+	downloads := apps.BrewDownloads(home)
+	downloaded := func() int64 { return apps.DownloadedBytes(downloads) }
+	stopScreen := newScreen(block, status.Read, downloaded, live, power, time.Now).follow(ctx)
 	res, err := replace.Run(ctx, replace.RunDeps{
 		Client: client, Runner: d.Runner, Snapshot: st.SnapshotID, Apps: appsSnap,
 		Rule: replace.RuleInput{
 			OldHome: st.OldHome, Present: st.Present, Apps: list,
 			PhotosICloud: readFlag(recipe, "photos-icloud"), DesktopDocumentsICloud: readFlag(recipe, "desktop-documents-icloud"),
 		},
-		NewHome: home, OldMachine: oldMachine, Plan: plan, Install: install,
-		Log: func(format string, a ...any) { p.cmd.Printf(format+"\n", a...) },
+		NewHome: home, OldMachine: oldMachine, Plan: plan, Install: install, Status: status,
 	})
+	stopScreen()
 	if err != nil {
 		return err
 	}
@@ -302,6 +316,19 @@ func takeOverConfig(ctx context.Context, p prompter, client *restic.Client, id, 
 		return config.Config{}, fmt.Errorf("reading the old Mac's floe config: %w", err)
 	}
 	return old.Rehome(oldHome, home), nil
+}
+
+// ready is the start steps' line, naming the App Store and the admin password when they were asked.
+func ready(store, admin bool) string {
+	switch {
+	case store && admin:
+		return "Disk access, App Store and admin password ready"
+	case store:
+		return "Disk access and App Store ready"
+	case admin:
+		return "Disk access and admin password ready"
+	}
+	return "Disk access ready"
 }
 
 // startAdmin asks for the administrator password, three tries at most, so Homebrew and mas never

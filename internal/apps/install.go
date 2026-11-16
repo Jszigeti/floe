@@ -67,7 +67,7 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 		rep.Homebrew = "floe had no administrator password"
 		return ""
 	}
-	t.step(0, "Homebrew")
+	t.step(0, "Homebrew", "the Homebrew installer")
 	installer := run.Cmd{Name: "/bin/bash", Args: []string{"-c", HomebrewInstall}, Env: append([]string{"NONINTERACTIVE=1"}, d.Admin.Env()...)}
 	err := t.run(ctx, d.Runner, installer, brewLine)
 	if brew := FindTool("brew", d.BrewDirs); brew != "" {
@@ -88,7 +88,7 @@ func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file st
 	if file == "" {
 		return 0
 	}
-	t.step(entries(file), "")
+	t.step(entries(file), "", "brew")
 	command := "brew bundle install --file " + file
 	if brew == "" {
 		rep.Commands = append(rep.Commands, command)
@@ -162,7 +162,7 @@ func reason(c run.Cmd, err error) string {
 func (rep *Report) casks(ctx context.Context, d Deps, t *tracker, brew string, casks []string) {
 	var left []string
 	for _, c := range casks {
-		t.step(1, c)
+		t.step(1, c, "brew")
 		if brew == "" {
 			left = append(left, c)
 			t.finish()
@@ -189,13 +189,13 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 	}
 	mas := FindTool("mas", d.BrewDirs)
 	if mas == "" {
-		t.step(len(ids), "")
+		t.step(len(ids), "", "mas")
 		rep.Commands = append(rep.Commands, "brew install mas && mas install "+strings.Join(ids, " "))
 		t.finish()
 		return
 	}
 	for _, id := range ids {
-		t.step(1, id)
+		t.step(1, id, "mas")
 		stop := keepFresh(ctx, d.Admin)
 		masCtx, cancel := context.WithTimeout(ctx, masTimeout)
 		err := t.run(masCtx, d.Runner, run.Cmd{Name: mas, Args: []string{"install", id}, Env: d.Admin.Env()}, masLine)
@@ -262,23 +262,26 @@ func masLine(line string) (string, bool) {
 // counts as done when the next one starts, and the step's end settles the count whatever the
 // tool printed.
 type tracker struct {
-	report       func(Progress)
-	total, done  int
-	stepEnd      int
-	current      string
-	pending      bool
-	seenThisStep map[string]bool
+	report        func(Progress)
+	total, done   int
+	stepEnd       int
+	current, tool string
+	pending       bool
+	seenThisStep  map[string]bool
 }
 
 func (t *tracker) emit() {
-	t.report(Progress{Done: t.done, Total: t.total, Current: t.current})
+	at := 0
+	if t.done < t.stepEnd {
+		at = t.done + 1
+	}
+	t.report(Progress{Done: t.done, Total: t.total, At: at, Current: t.current, Tool: t.tool})
 }
 
-func (t *tracker) step(n int, current string) {
+// step starts n entries run by tool; current names the first one, when known.
+func (t *tracker) step(n int, current, tool string) {
 	t.stepEnd, t.pending, t.seenThisStep = t.done+n, false, map[string]bool{}
-	if current != "" {
-		t.current = current
-	}
+	t.current, t.tool = current, tool
 	t.emit()
 }
 

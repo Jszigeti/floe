@@ -3,6 +3,7 @@
 package apps
 
 import (
+	"cmp"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,10 @@ type Deps struct {
 // Progress is how far Install got, sent on every line brew or mas prints.
 type Progress struct {
 	Done, Total int
-	Current     string
+	// At numbers the entry at work, 1..Total; 0 between entries and while Homebrew installs.
+	At      int
+	Current string
+	Tool    string // the tool at work, as the screen names it
 }
 
 // Report is what Install leaves to the user.
@@ -59,6 +63,25 @@ func entries(file string) int {
 	for _, line := range strings.Split(string(data), "\n") {
 		if k := kind(line); k != "" && k != "tap" {
 			n++
+		}
+	}
+	return n
+}
+
+// BrewDownloads is the folder `brew --cache` downloads into, under ~/Library/Caches/Homebrew
+// unless HOMEBREW_CACHE moves it. A brew.env file that moves it is not read.
+func BrewDownloads(home string) string {
+	return filepath.Join(cmp.Or(os.Getenv("HOMEBREW_CACHE"), filepath.Join(home, "Library/Caches/Homebrew")), "downloads")
+}
+
+// DownloadedBytes is what the files of dir hold. brew's curl writes a download there as it
+// comes, even when it prints nothing.
+func DownloadedBytes(dir string) int64 {
+	entries, _ := os.ReadDir(dir) // no folder yet: nothing downloaded
+	var n int64
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil {
+			n += info.Size()
 		}
 	}
 	return n

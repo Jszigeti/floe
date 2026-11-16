@@ -51,14 +51,24 @@ func readFlag(recipe, name string) bool {
 	return err == nil && strings.TrimSpace(string(data)) == "true"
 }
 
-// askForPower has a MacBook on battery plugged in, since a flat battery or a closed lid would cut the run.
-func askForPower(ctx context.Context, p prompter, r run.Runner) {
-	out, err := r.Run(ctx, run.Cmd{Name: "pmset", Args: []string{"-g", "batt"}})
-	if err != nil || !strings.Contains(out, "Battery Power") {
-		return
+// askForPower has a MacBook on battery plugged in, since a flat battery or a closed lid would
+// cut the run. It returns the power the screen shows, read again once the user plugged it in.
+func askForPower(ctx context.Context, p prompter, r run.Runner) string {
+	if !onBattery(ctx, r) {
+		return "on power"
 	}
 	p.cmd.Println("This Mac runs on battery: plug it in and keep its lid open until the end.")
 	p.answer("Press Enter to continue")
+	if onBattery(ctx, r) {
+		return "on battery"
+	}
+	return "on power"
+}
+
+// onBattery is false on a desktop, or when pmset cannot tell.
+func onBattery(ctx context.Context, r run.Runner) bool {
+	out, err := r.Run(ctx, run.Cmd{Name: "pmset", Args: []string{"-g", "batt"}})
+	return err == nil && strings.Contains(out, "Battery Power")
 }
 
 // openAppStore has the user sign in to the App Store, which mas cannot do. A skip takes the App

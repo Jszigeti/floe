@@ -51,3 +51,21 @@ func TestStallNeverCountsLoading(t *testing.T) {
 		t.Fatalf("still for 3m after loading = %v, want 3m", got)
 	}
 }
+
+// restic's first pass walks the tree: the total grows while nothing is restored yet.
+func TestStallCountsAGrowingTotalAsLife(t *testing.T) {
+	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	s := &Stall{After: 3 * time.Minute, Now: func() time.Time { return now }}
+
+	s.SeenRestore(restic.RestoreStatus{Total: 1e9})
+	for total := int64(2e9); total <= 5e9; total += 1e9 {
+		now = now.Add(2 * time.Minute)
+		if got := s.SeenRestore(restic.RestoreStatus{Total: total}); got != 0 {
+			t.Fatalf("total grown to %d = %v, want 0", total, got)
+		}
+	}
+	now = now.Add(3 * time.Minute)
+	if got := s.SeenRestore(restic.RestoreStatus{Total: 5e9}); got != 3*time.Minute {
+		t.Fatalf("nothing moved for 3m = %v, want 3m", got)
+	}
+}

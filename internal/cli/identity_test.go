@@ -47,6 +47,7 @@ func runInit(f *run.Fake, stdin string) (string, error) {
 	cmd := Root(Deps{Version: "t", Runner: f})
 	out := new(bytes.Buffer)
 	cmd.SetOut(out)
+	cmd.SetErr(out)
 	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs([]string{"init"})
 	err := cmd.Execute()

@@ -432,6 +432,41 @@ func TestInstallReportsProgress(t *testing.T) {
 	}
 }
 
+// The screen numbers the entry at work 1..N; Homebrew itself is no entry of the plan.
+func TestInstallNumbersTheEntryAtWork(t *testing.T) {
+	f := &run.Fake{}
+	d := testDeps(t, f)
+	d.Admin = &Admin{r: f, dir: "/private/admin"}
+	p := Plan{Brewfile: filepath.Join(t.TempDir(), "Brewfile.apps"), Casks: []string{"zed"}}
+	writeFile(t, p.Brewfile, "brew \"jq\"\nbrew \"git\"\n", 0o644)
+	print := printing(map[string]string{
+		"bash -c " + HomebrewInstall:               "==> Downloading and installing Homebrew...\n",
+		"brew bundle install --file " + p.Brewfile: "Installing jq\nInstalling git\n",
+		"brew install --cask --adopt zed":          "==> Installing Cask zed\n",
+	})
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "/bin/bash" {
+			installTool(t, d.BrewDirs[0], "brew")
+		}
+		return print(c)
+	}
+	var seen []Progress
+	Install(context.Background(), d, p, func(pr Progress) { seen = append(seen, pr) })
+
+	var at []string
+	for _, pr := range seen {
+		if pr.Current == "Homebrew" && (pr.At != 0 || pr.Tool != "the Homebrew installer") {
+			t.Errorf("Homebrew is no entry of the plan: %+v", pr)
+		}
+		if line := fmt.Sprintf("%d %s %s", pr.At, pr.Current, pr.Tool); pr.At > 0 && (len(at) == 0 || at[len(at)-1] != line) {
+			at = append(at, line)
+		}
+	}
+	if want := []string{"1  brew", "1 jq brew", "2 git brew", "3 zed brew"}; !slices.Equal(at, want) {
+		t.Errorf("entries at work = %q, want %q", at, want)
+	}
+}
+
 // Homebrew 7's bundle names every entry first, then installs them in one batch.
 func TestInstallKeepsMovingThroughABatch(t *testing.T) {
 	f := &run.Fake{}
@@ -498,5 +533,31 @@ func TestMissingAppsSkipsHiddenEntries(t *testing.T) {
 	}
 	if got := listedApps(filepath.Join(root, "none.txt")); got != nil {
 		t.Fatalf("no list must mean nothing expected, got %q", got)
+	}
+}
+
+func TestBrewDownloadsFollowsHomebrewCache(t *testing.T) {
+	t.Setenv("HOMEBREW_CACHE", "")
+	if got := BrewDownloads("/Users/bob"); got != "/Users/bob/Library/Caches/Homebrew/downloads" {
+		t.Errorf("default = %q", got)
+	}
+	t.Setenv("HOMEBREW_CACHE", "/Volumes/Fast/brew")
+	if got := BrewDownloads("/Users/bob"); got != "/Volumes/Fast/brew/downloads" {
+		t.Errorf("moved cache = %q", got)
+	}
+}
+
+func TestDownloadedBytesGrowsWithADownload(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "downloads")
+	if got := DownloadedBytes(dir); got != 0 {
+		t.Fatalf("no folder yet = %d", got)
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "abc--jq.bottle.tar.gz"), "12345", 0o644)
+	writeFile(t, filepath.Join(dir, "def--Xcode.xip.incomplete"), "123", 0o644)
+	if got := DownloadedBytes(dir); got != 8 {
+		t.Fatalf("downloaded = %d, want 8", got)
 	}
 }

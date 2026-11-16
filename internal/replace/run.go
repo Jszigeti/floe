@@ -20,27 +20,41 @@ import (
 
 // Status is how far both tasks of a run are: they write it from their goroutines, the screen reads it.
 type Status struct {
-	mu      sync.Mutex
-	restore restic.RestoreStatus
-	apps    apps.Progress
+	mu   sync.Mutex
+	seen Progress
 }
 
-func (s *Status) Read() (restic.RestoreStatus, apps.Progress) {
+// Progress is what the screen shows of a run.
+type Progress struct {
+	Restore   restic.RestoreStatus // the home's restore
+	Apps      apps.Progress
+	AppsLines int64 // apps reports so far, one per line brew or mas printed: the stall check counts them
+	// HomeDone says the home's files are in. The preferences, then the app bundles of the apps
+	// snapshot follow, which report no status: Bundle numbers the one at work, 1..Bundles.
+	HomeDone        bool
+	Bundle, Bundles int
+	// RestoreEnded and AppsEnded say a task is over, the restore's bundles and preferences included.
+	RestoreEnded, AppsEnded bool
+}
+
+func (s *Status) Read() Progress {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.restore, s.apps
+	return s.seen
+}
+
+func (s *Status) update(f func(*Progress)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f(&s.seen)
 }
 
 func (s *Status) setRestore(st restic.RestoreStatus) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.restore = st
+	s.update(func(p *Progress) { p.Restore = st })
 }
 
-func (s *Status) setApps(p apps.Progress) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.apps = p
+func (s *Status) setApps(a apps.Progress) {
+	s.update(func(p *Progress) { p.Apps, p.AppsLines = a, p.AppsLines+1 })
 }
 
 // RunDeps is what a run restores and installs, once every question was asked.
@@ -58,7 +72,6 @@ type RunDeps struct {
 	Plan       apps.Plan
 	Install    apps.Deps
 	Status     *Status // nil when nothing reads it
-	Log        func(format string, a ...any)
 }
 
 // Result is what a run did and what it left to do.
@@ -95,11 +108,13 @@ func Run(ctx context.Context, d RunDeps) (Result, error) {
 		defer wg.Done()
 		out = restoreAll(ctx, d, tmp)
 		res.RestoreTook = time.Since(start)
+		d.Status.update(func(p *Progress) { p.RestoreEnded = true })
 	}()
 	go func() {
 		defer wg.Done()
-		res.Apps = installApps(ctx, d)
+		res.Apps = apps.Install(ctx, d.Install, d.Plan, d.Status.setApps)
 		res.AppsTook = time.Since(start)
+		d.Status.update(func(p *Progress) { p.AppsEnded = true })
 	}()
 	wg.Wait()
 	res.Restored, res.Partial, res.RestoreErrs, res.FromBackup = out.bytes, out.partial, out.errs, out.bundles
@@ -108,17 +123,6 @@ func Run(ctx context.Context, d RunDeps) (Result, error) {
 	res.Carried, res.SettingsErrs = CarrySettings(ctx, d.Runner, out.settings, d.Rule.OldHome, d.NewHome, out.uuid)
 	res.Elapsed = time.Since(start)
 	return res, nil
-}
-
-func installApps(ctx context.Context, d RunDeps) apps.Report {
-	current := ""
-	return apps.Install(ctx, d.Install, d.Plan, func(p apps.Progress) {
-		d.Status.setApps(p)
-		if p.Current != "" && p.Current != current {
-			current = p.Current
-			d.Log("  %d of %d  %s", p.Done, p.Total, current)
-		}
-	})
 }
 
 // restoreTask is what the restore task did, and what CarrySettings needs from it.
@@ -136,7 +140,8 @@ func restoreAll(ctx context.Context, d RunDeps, tmp string) restoreTask {
 	var out restoreTask
 	out.restoreHome(ctx, d, tmp)
 	rehome := config.Rehomer(d.Rule.OldHome, d.NewHome)
-	for _, p := range d.Apps.Paths {
+	for i, p := range d.Apps.Paths {
+		d.Status.update(func(pr *Progress) { pr.HomeDone, pr.Bundle, pr.Bundles = true, i+1, len(d.Apps.Paths) })
 		target := rehome(p)
 		staged := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".floe-restore")
 		// An interrupted run's copy: restic would skip its files as restored.
@@ -172,9 +177,9 @@ func (out *restoreTask) restoreHome(ctx context.Context, d RunDeps, tmp string) 
 	// Preferences go through defaults import, which cfprefsd sees, never as files under its feet.
 	patterns = append(patterns, "/Library/Preferences")
 	failed, _ := out.restore(ctx, d, tmp, d.Snapshot, in.OldHome, d.NewHome, patterns, d.Status.setRestore)
+	d.Status.update(func(p *Progress) { p.HomeDone = true })
 	out.failed(d.NewHome, failed)
-	st, _ := d.Status.Read()
-	out.bytes = st.Done
+	out.bytes = d.Status.Read().Restore.Done
 	out.settings = out.importPrefs(ctx, d, tmp, in)
 }
 

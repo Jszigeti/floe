@@ -111,11 +111,11 @@ func TestRestoreFolderReportsStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []RestoreStatus{
-		{Done: 3000000, Total: 3000012},
-		{Done: 56386884 + 453000000, Total: 150000012 + 453000000},
-		{Done: 453000006, Total: 453000006},
+		{Done: 3000000, Total: 3000012, Skipped: 3000000},
+		{Done: 56386884 + 453000000, Total: 150000012 + 453000000, Skipped: 453000000},
+		{Done: 453000006, Total: 453000006, Skipped: 453000006},
 		{Loading: true},
-		{Done: 150000012 + 453000000, Total: 150000012 + 453000000},
+		{Done: 150000012 + 453000000, Total: 150000012 + 453000000, Skipped: 453000000},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("status = %+v, want %+v", got, want)

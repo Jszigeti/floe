@@ -109,7 +109,6 @@ func runDeps(t *testing.T, r run.Runner) RunDeps {
 		}},
 		NewHome: home,
 		Install: apps.Deps{Runner: r, AppsRoot: filepath.Join(home, "Applications")},
-		Log:     func(string, ...any) {},
 	}
 }
 
@@ -142,8 +141,11 @@ func TestRunRestoresTheHomeWithTheRule(t *testing.T) {
 	if !strings.HasSuffix(home, "\n/Library/Preferences\n") {
 		t.Errorf("Preferences must stay out of the home restore, last line wins:\n%s", home)
 	}
-	if done, _ := d.Status.Read(); res.Restored != 100 || done.Done != 100 {
-		t.Fatalf("restored %d, status %+v, want the summary's 100 bytes", res.Restored, done)
+	if seen := d.Status.Read(); res.Restored != 100 || seen.Restore.Done != 100 {
+		t.Fatalf("restored %d, status %+v, want the summary's 100 bytes", res.Restored, seen.Restore)
+	}
+	if seen := d.Status.Read(); !seen.RestoreEnded || !seen.AppsEnded {
+		t.Fatalf("both tasks must say they ended: %+v", seen)
 	}
 }
 
@@ -256,6 +258,47 @@ func TestRunRestoresBackupAppsMovedToThisHome(t *testing.T) {
 	}
 	if excludes := f.exclude("ccc333:/Users/alice/Applications/Zaap.app"); strings.TrimSpace(excludes) != "" {
 		t.Fatalf("an app bundle restored without some of its files: %q", excludes)
+	}
+}
+
+// The preferences and the app bundles report no status: the screen shows them apart, never as
+// the home's last status frozen in place.
+func TestRunTellsTheRestoreStepAfterTheHome(t *testing.T) {
+	f := newRunFake(t, oldLibrary)
+	d := runDeps(t, f)
+	d.Apps = restic.Snapshot{ShortID: "ccc333", Paths: []string{"/Users/alice/Applications/Zaap.app", "/Users/alice/Applications/Yak.app"}}
+	d.Status = &Status{}
+	var mu sync.Mutex
+	seen := map[string]Progress{}
+	inner := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "restic" && c.Args[0] == "restore" {
+			mu.Lock()
+			seen[c.Args[2]] = d.Status.Read()
+			mu.Unlock()
+		}
+		return inner(c)
+	}
+	if _, err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		from            string
+		homeDone        bool
+		bundle, bundles int
+	}{
+		{"aaa111:/Users/alice", false, 0, 0},
+		{"aaa111:/Users/alice/Library/Preferences", true, 0, 0},
+		{"ccc333:/Users/alice/Applications/Zaap.app", true, 1, 2},
+		{"ccc333:/Users/alice/Applications/Yak.app", true, 2, 2},
+	} {
+		got, ok := seen[c.from]
+		if !ok || got.HomeDone != c.homeDone || got.Bundle != c.bundle || got.Bundles != c.bundles || got.RestoreEnded {
+			t.Errorf("restoring %s the status said %+v, want home done %v, bundle %d of %d", c.from, got, c.homeDone, c.bundle, c.bundles)
+		}
+	}
+	if !d.Status.Read().RestoreEnded {
+		t.Fatal("the restore must say it ended")
 	}
 }
 
@@ -486,7 +529,8 @@ func TestStatusReadsBothTasks(t *testing.T) {
 	var s Status
 	s.setRestore(restic.RestoreStatus{Done: 3, Total: 9})
 	s.setApps(apps.Progress{Done: 1, Total: 4, Current: "zed"})
-	if r, a := s.Read(); r.Done != 3 || a.Current != "zed" {
-		t.Fatalf("Read = %+v, %+v", r, a)
+	s.setApps(apps.Progress{Done: 1, Total: 4, Current: "zed"})
+	if seen := s.Read(); seen.Restore.Done != 3 || seen.Apps.Current != "zed" || seen.AppsLines != 2 {
+		t.Fatalf("Read = %+v, want every apps report counted, the same one twice included", seen)
 	}
 }

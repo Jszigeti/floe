@@ -88,6 +88,23 @@ func TestE2EReplace(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(alice, "Documents/notes.txt"), []byte("from alice"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Of alice's Library, only Steam's data is hers to carry: the rest is her Mac's or Apple's.
+	steam := "Library/Application Support/Steam/x"
+	oldMacOnly := []string{
+		"Library/Keychains/login.keychain-db",
+		"Library/Application Support/com.apple.TCC/x",
+		"Library/Application Support/networkserviceproxy/x",
+		"Library/Containers/com.leftover.app/x",
+		"Library/Preferences/ByHost/x.0A1B2C3D-4E5F-6A7B-8C9D-0E1F2A3B4C5D.plist",
+	}
+	for _, rel := range append([]string{steam}, oldMacOnly...) {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(alice, rel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(alice, rel), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	out, code := runFloe(t, alice, aliceShims, "\n\n\n", "init")
 	if code != 0 {
@@ -110,7 +127,20 @@ func TestE2EReplace(t *testing.T) {
 		t.Fatalf("bob's replace failed, exit %d:\n%s", code, out)
 	}
 	mustContain(t, out, "Found a backup")
+	mustContain(t, out, "✓ Found the backup, passphrase checked")
+	mustContain(t, out, "Restoring files")
 	mustContain(t, out, "  R  Restart now")
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("off a terminal the replace prints no escape sequence:\n%q", out)
+	}
+	if _, err := os.Stat(filepath.Join(bob, steam)); err != nil {
+		t.Fatalf("Steam's data must come back: %v", err)
+	}
+	for _, rel := range oldMacOnly {
+		if _, err := os.Stat(filepath.Join(bob, rel)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s must stay the old Mac's, stat: %v", rel, err)
+		}
+	}
 
 	got, err := os.ReadFile(filepath.Join(bob, "Documents/notes.txt"))
 	if err != nil || string(got) != "from alice" {
@@ -129,6 +159,13 @@ func TestE2EReplace(t *testing.T) {
 	// App Store ids now come from the app inventory of the runner's own /Applications, so none is asserted here.
 	mustContain(t, string(calls), "brew bundle install --file "+filepath.Join(bob, ".local/state/floe/recipe/Brewfile.apps"))
 	mustContain(t, string(calls), "caffeinate -i -w ")
+	snaps := exec.Command(filepath.Join(bob, resticRelPath), "-r", aliceRepo, "snapshots", "--json")
+	snaps.Env = []string{"HOME=" + bob, "RESTIC_PASSWORD=" + string(pass)}
+	listed, err := snaps.Output()
+	if err != nil {
+		t.Fatalf("listing alice's snapshots: %v", err)
+	}
+	mustContain(t, string(listed), `"replaced"`)
 
 	out, code = runFloe(t, bob, bobShims, "", "backup")
 	if code != 0 {

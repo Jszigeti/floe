@@ -106,10 +106,14 @@ func TestReplaceRestoresTheOldHomeAndTakesOverItsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
-	for _, want := range []string{"Found a backup: MacBook-Air, last saved ", "Choice [1]: ", "  R  Restart now\n"} {
+	for _, want := range []string{"Found a backup: MacBook-Air, last saved ", "Choice [1]: ", "  R  Restart now\n",
+		"✓ Found the backup, passphrase checked", "\nRestoring files  loading the backup…\n", "\nInstalling apps\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("off a terminal the replace prints no escape sequence:\n%q", out)
 	}
 	c := resticCall(f, "restore")
 	if c == nil || !slices.Equal(c.Args[:len(c.Args)-1], []string{"restore", "--json", "bbb222:/Users/alice", "--target", home, "--exclude-file"}) {
