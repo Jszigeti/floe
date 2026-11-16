@@ -32,16 +32,16 @@ var replaceExcludes = []string{
 // recipeFiles are the manifest files a backup carries (see internal/manifest).
 var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt"}
 
-// runningAppsJXA lists the open apps but Finder and the frontmost one, the terminal floe runs
-// in. It reads NSWorkspace, which needs no Automation permission.
+// runningAppsJXA lists the open apps but Finder and the one whose bundle id it is given, the
+// terminal floe runs in. It reads NSWorkspace, which needs no Automation permission.
 const runningAppsJXA = `ObjC.import("AppKit");
-const w = $.NSWorkspace.sharedWorkspace;
-const front = w.frontmostApplication.localizedName.js;
-w.runningApplications.js
-  .filter(a => a.activationPolicy == $.NSApplicationActivationPolicyRegular)
-  .map(a => a.localizedName.js)
-  .filter(n => n != front && n != "Finder")
-  .join("\n")`
+function run(argv) {
+  return $.NSWorkspace.sharedWorkspace.runningApplications.js
+    .filter(a => a.activationPolicy == $.NSApplicationActivationPolicyRegular)
+    .filter(a => a.bundleIdentifier.js != argv[0] && a.localizedName.js != "Finder")
+    .map(a => a.localizedName.js)
+    .join("\n");
+}`
 
 // runReplace makes this Mac the continuation of b: its files, its floe settings, its history.
 func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, b foundBackup) error {
@@ -169,7 +169,9 @@ func checkFreeSpace(ctx context.Context, client *restic.Client, id, home string)
 // waitForAppsToQuit holds the restore while an open app could write over the data restored under it.
 func waitForAppsToQuit(ctx context.Context, p prompter, r run.Runner) error {
 	for {
-		out, err := r.Run(ctx, run.Cmd{Name: "osascript", Args: []string{"-l", "JavaScript", "-e", runningAppsJXA}})
+		// macOS gives every process an app launches that app's bundle id, here the terminal's.
+		terminal := os.Getenv("__CFBundleIdentifier")
+		out, err := r.Run(ctx, run.Cmd{Name: "osascript", Args: []string{"-l", "JavaScript", "-e", runningAppsJXA, terminal}})
 		if err != nil {
 			return fmt.Errorf("listing open apps: %w", err)
 		}

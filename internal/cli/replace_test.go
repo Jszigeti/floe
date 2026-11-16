@@ -199,11 +199,15 @@ func TestReplaceStopsWhenTheDiskIsTooSmall(t *testing.T) {
 
 func TestReplaceWaitsForOpenApps(t *testing.T) {
 	_, dest, _ := startReplace(t)
+	t.Setenv("__CFBundleIdentifier", "com.apple.Terminal")
 	f := replaceFake(nil, "1000")
 	base := f.Handler
 	listed := 0
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
+			if got := c.Args[len(c.Args)-1]; got != "com.apple.Terminal" {
+				t.Errorf("apps listed sparing %q, want the terminal floe runs in", got)
+			}
 			listed++
 			if listed == 1 {
 				return "Safari\nMail\n", nil
