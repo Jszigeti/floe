@@ -34,6 +34,11 @@ func (c *Client) Open(ctx context.Context) error {
 	return err
 }
 
+// Is reports whether the snapshot is of kind tag; snapshots made before kinds existed are home.
+func (s Snapshot) Is(tag string) bool {
+	return slices.Contains(s.Tags, tag) || (tag == "home" && len(s.Tags) == 0)
+}
+
 // Latest is the newest snapshot carrying tag: `snapshots --latest 1` keeps one per host and path,
 // not one overall. Snapshots with no tag were made before tags existed and count as home.
 func (c *Client) Latest(ctx context.Context, tag string) (Snapshot, error) {
@@ -41,9 +46,7 @@ func (c *Client) Latest(ctx context.Context, tag string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snaps = slices.DeleteFunc(snaps, func(s Snapshot) bool {
-		return !slices.Contains(s.Tags, tag) && (tag != "home" || len(s.Tags) > 0)
-	})
+	snaps = slices.DeleteFunc(snaps, func(s Snapshot) bool { return !s.Is(tag) })
 	if len(snaps) == 0 {
 		return Snapshot{}, errors.New("the backup has no snapshot yet")
 	}

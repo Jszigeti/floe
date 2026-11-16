@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"slices"
+
 	"github.com/Jszigeti/floe/internal/icloud"
 	"github.com/Jszigeti/floe/internal/launchd"
+	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +23,8 @@ func newStatusCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The apps snapshot is not a backup of the home folder: never count or show it as one.
+			snaps = slices.DeleteFunc(snaps, func(s restic.Snapshot) bool { return !s.Is("home") })
 			plural := "s"
 			if len(snaps) == 1 {
 				plural = ""

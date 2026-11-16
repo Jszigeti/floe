@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -692,6 +693,159 @@ func TestIncompleteBackupWithUnparsedDetailFallsBack(t *testing.T) {
 	}
 	if string(data) != originalContent {
 		t.Fatalf("last_incomplete.log was overwritten, want %q got %q", originalContent, string(data))
+	}
+}
+
+// withBackupApp gives the run one app the cask list does not know, so it is saved in the apps snapshot.
+func withBackupApp(t *testing.T, d *Deps) string {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(home, ".local/state/floe/cask.json")
+	writeFile(t, cache, `[{"token":"google-chrome","artifacts":[{"app":["Google Chrome.app"]}]}]`)
+	root := t.TempDir()
+	app := filepath.Join(root, "Voicebox.app")
+	writeFile(t, filepath.Join(app, "Contents/Info.plist"), "{}")
+	d.AppRoots = []string{root}
+	return app
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func backupCalls(f *run.Fake) []run.Cmd {
+	var calls []run.Cmd
+	for _, c := range f.Calls {
+		if c.Name == "restic" && c.Args[0] == "backup" {
+			calls = append(calls, c)
+		}
+	}
+	return calls
+}
+
+func TestBackupSavesUnknownAppsInTheirOwnSnapshot(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	app := withBackupApp(t, &d)
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+
+	calls := backupCalls(f)
+	if len(calls) != 2 {
+		t.Fatalf("want an apps and a home backup, got %+v", calls)
+	}
+	apps, home := strings.Join(calls[0].Args, " "), strings.Join(calls[1].Args, " ")
+	// The home snapshot comes last so `floe restore latest` and `floe status` keep pointing at it.
+	if !strings.Contains(apps, "--tag apps") || !strings.Contains(apps, app) || strings.Contains(apps, "--exclude") {
+		t.Fatalf("apps backup = %q, want --tag apps, the bundle and no exclude", apps)
+	}
+	if !strings.Contains(home, "--tag home") || !strings.Contains(home, "cask.json") {
+		t.Fatalf("home backup = %q, want --tag home and the cask list left out", home)
+	}
+}
+
+func TestBackupWithoutUnknownAppsMakesOneSnapshot(t *testing.T) {
+	f := &run.Fake{}
+	d, _ := deps(t, f)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if calls := backupCalls(f); len(calls) != 1 {
+		t.Fatalf("want the home backup only, got %+v", calls)
+	}
+}
+
+func TestAppsBackupFailureNotifiesButKeepsHome(t *testing.T) {
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "restic" && slices.Contains(c.Args, "apps") {
+			return "", errors.New("pack boom")
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	withBackupApp(t, &d)
+
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatalf("a failed apps snapshot must not fail the run: %v", err)
+	}
+	if !slices.Contains(n.titles, "floe: app backup failed") {
+		t.Fatalf("notifications = %v, want the apps failure", n.titles)
+	}
+	if calls := backupCalls(f); len(calls) != 2 {
+		t.Fatalf("the home backup must still run, got %+v", calls)
+	}
+}
+
+func TestBackupTagsUntaggedOnce(t *testing.T) {
+	fail := true
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "restic" && c.Args[0] == "tag" && fail {
+			fail = false
+			return "", errors.New("repo locked")
+		}
+		return "", nil
+	}}
+	d, _ := deps(t, f)
+
+	for range 3 {
+		if err := Run(context.Background(), d); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tagged := 0
+	for _, c := range f.Calls {
+		if c.Name == "restic" && slices.Equal(c.Args, []string{"tag", "--tag", "", "--add", "home"}) {
+			tagged++
+		}
+	}
+	if tagged != 2 {
+		t.Fatalf("want the failed tagging retried once then never again, got %d calls", tagged)
+	}
+	home, _ := os.UserHomeDir()
+	stamps, _ := filepath.Glob(filepath.Join(home, ".local/state/floe/tags-migrated-*"))
+	if len(stamps) != 1 {
+		t.Fatalf("want one migration stamp for this repository, got %v", stamps)
+	}
+
+	// Another repository on the same Mac is migrated too.
+	d.Client.Repo = filepath.Join(t.TempDir(), "other")
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if stamps, _ := filepath.Glob(filepath.Join(home, ".local/state/floe/tags-migrated-*")); len(stamps) != 2 {
+		t.Fatalf("want a second stamp for the other repository, got %v", stamps)
+	}
+}
+
+func TestAppsBackupIncompleteStaysQuiet(t *testing.T) {
+	_, exit3Err := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c", "exit 3"}})
+	f := &run.Fake{Handler: func(c run.Cmd) (string, error) {
+		if c.Name == "restic" && slices.Contains(c.Args, "apps") {
+			return "", exit3Err
+		}
+		return "", nil
+	}}
+	d, n := deps(t, f)
+	withBackupApp(t, &d)
+	if err := Run(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range n.titles {
+		if strings.Contains(title, "app backup failed") {
+			t.Fatalf("an incomplete apps snapshot must not alert: %v", n.titles)
+		}
 	}
 }
 

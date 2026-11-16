@@ -23,7 +23,16 @@ func newRestoreCmd(d Deps) *cobra.Command {
 			if dest == "" {
 				dest = "floe-restore-" + args[0]
 			}
-			if err := client.Restore(cmd.Context(), args[0], dest, include); err != nil {
+			id := args[0]
+			// restic's own "latest" could be the apps snapshot: latest means the newest home backup.
+			if id == "latest" {
+				snap, err := client.Latest(cmd.Context(), "home")
+				if err != nil {
+					return err
+				}
+				id = snap.ShortID
+			}
+			if err := client.Restore(cmd.Context(), id, dest, include); err != nil {
 				return err
 			}
 			cmd.Println("Restored to", dest)

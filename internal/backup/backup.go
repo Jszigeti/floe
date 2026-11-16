@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -114,7 +115,7 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	caskCache, _ := statePath("cask.json") // no home: no manifest, nothing to leave out
-	dumpManifest(ctx, d, caskCache)
+	apps := dumpManifest(ctx, d, caskCache)
 
 	onICloud := icloud.IsICloudPath(d.Cfg.Destination)
 	if onICloud {
@@ -125,6 +126,7 @@ func Run(ctx context.Context, d Deps) error {
 	}
 
 	_ = d.Client.Unlock(ctx) // removes stale locks only; failure is non-fatal
+	migrateTags(ctx, d)
 
 	skipPrune := false
 	if onICloud {
@@ -140,6 +142,9 @@ func Run(ctx context.Context, d Deps) error {
 			d.Notify("floe retention failed", err.Error())
 		}
 	}
+
+	// Before the home snapshot, so the newest snapshot stays the home one for `restore latest` and `status`.
+	backupApps(ctx, d, apps)
 
 	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
 	if caskCache != "" {
@@ -209,6 +214,59 @@ func dumpManifest(ctx context.Context, d Deps, caskCache string) []inventory.App
 		d.Log("manifest: %s", w)
 	}
 	return apps
+}
+
+// backupApps saves the bundles no installer can bring back in their own snapshot, without the
+// home's excludes: an unanchored "Cache" or "node_modules" would break a bundle's signature.
+func backupApps(ctx context.Context, d Deps, apps []inventory.App) {
+	var paths []string
+	for _, a := range apps {
+		if a.Source == inventory.SourceBackup {
+			paths = append(paths, a.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return
+	}
+	err := d.Client.Backup(ctx, paths, nil, []string{"apps"})
+	var ie *restic.IncompleteError
+	switch {
+	case errors.As(err, &ie):
+		// No alert: an app updated during the run is common; the files left out are named in the log.
+		if len(ie.Unreadable) == 0 {
+			// A removed app gives "<path> does not exist, skipping", which names no unread file.
+			d.Log("apps backup incomplete, the rest is saved; detail: %s", ie.RawDetail)
+			break
+		}
+		examples := ie.Unreadable
+		if len(examples) > maxIncompleteExamples {
+			examples = examples[:maxIncompleteExamples]
+		}
+		d.Log("apps backup incomplete: %d files could not be read, the rest is saved; examples: %s", len(ie.Unreadable), strings.Join(examples, ", "))
+	case err != nil:
+		d.Log("apps backup failed: %v", err)
+		d.Notify("floe: app backup failed", "Apps that no installer can bring back were not saved: run floe backup in Terminal to see why")
+	}
+}
+
+// migrateTags tags the snapshots made before snapshots carried their kind, once.
+func migrateTags(ctx context.Context, d Deps) {
+	// One stamp per repository: a Mac that switches to another backup must migrate that one too.
+	name := "tags-migrated-" + fmt.Sprintf("%x", sha256.Sum256([]byte(d.Client.Repo)))[:12]
+	stamp, err := statePath(name)
+	if err != nil {
+		return
+	}
+	if _, err := os.Stat(stamp); err == nil {
+		return
+	}
+	if err := d.Client.TagUntagged(ctx, "home"); err != nil {
+		d.Log("tagging older snapshots failed, retrying next run: %v", err)
+		return
+	}
+	if err := digest.MarkNotice(name, d.Now()); err != nil {
+		d.Log("tags-migrated stamp write failed: %v", err)
+	}
 }
 
 func incompleteRecipe() string {
