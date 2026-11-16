@@ -91,6 +91,10 @@ func DefaultExcludes(home string) []string {
 		// Installed games and app builds their launcher downloads again; saves live elsewhere.
 		filepath.Join(home, "Library/Application Support/Steam/steamapps/common"),
 		filepath.Join(home, "Library/Application Support/discord/app-*"),
+		filepath.Join(home, "Library/Application Support/Google/Chrome for Testing"),
+		filepath.Join(home, "Library/Application Support/Google/Chrome-headless"),
+		filepath.Join(home, "Library/Application Support/Code/CachedExtensionVSIXs"),
+		filepath.Join(home, "Library/Application Support/com.apple.wallpaper/aerials"),
 		filepath.Join(home, "miniconda3"),
 		filepath.Join(home, "anaconda3"),
 		filepath.Join(home, ".yarn/berry/cache"),
