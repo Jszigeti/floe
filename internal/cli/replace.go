@@ -81,8 +81,9 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	}
 	defer keepAwake(ctx, d.Runner)()
 
-	// restic writes a retagged snapshot under a new id, which the state pins instead.
-	if st.SnapshotID, err = client.Tag(ctx, st.SnapshotID, []string{"replaced"}, nil); err != nil {
+	// restic writes a retagged snapshot under a new id, which the state pins instead. A snapshot
+	// from before kinds has no tag: home keeps it a home snapshot once it carries replaced.
+	if st.SnapshotID, err = client.Tag(ctx, st.SnapshotID, []string{"home", "replaced"}, nil); err != nil {
 		return fmt.Errorf("keeping the replaced snapshot for a year: %w", err)
 	}
 	st.Restoring = true

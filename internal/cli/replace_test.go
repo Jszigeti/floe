@@ -466,7 +466,7 @@ func TestReplaceTagsTheReplacedSnapshot(t *testing.T) {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
 	tag := resticCall(f, "tag")
-	if tag == nil || !slices.Equal(tag.Args, []string{"tag", "--json", "--add", "replaced", "bbb222"}) {
+	if tag == nil || !slices.Equal(tag.Args, []string{"tag", "--json", "--add", "home", "--add", "replaced", "bbb222"}) {
 		t.Fatalf("tag call = %+v", tag)
 	}
 	if c := resticCall(f, "restore"); c == nil || c.Args[2] != "ddd444ff:/Users/alice" {
