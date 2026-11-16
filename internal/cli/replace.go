@@ -188,8 +188,8 @@ func askBackupPassphrase(ctx context.Context, p prompter, r run.Runner, client *
 		}
 	}
 	for {
-		pass := p.ask(fmt.Sprintf("Passphrase of %s's backup, from your password manager", name), "")
-		if pass == "" {
+		pass, _ := p.secret(fmt.Sprintf("Passphrase of %s's backup, from your password manager", name))
+		if pass = strings.TrimSpace(pass); pass == "" {
 			return errors.New("stopped: no passphrase given")
 		}
 		client.Pass = pass

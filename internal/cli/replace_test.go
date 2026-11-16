@@ -741,3 +741,14 @@ func TestOutcomeSaysWhatTheActionLeft(t *testing.T) {
 		}
 	}
 }
+
+func TestReplaceAsksThePassphraseAsASecret(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	out, err := runInit(replaceFake(nil, "1000"), dest+"\n\npw\n")
+	if err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "from your password manager: ") || strings.Contains(out, "password manager []") {
+		t.Fatalf("want the hidden prompt, not the one that echoes:\n%s", out)
+	}
+}
