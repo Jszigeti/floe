@@ -81,21 +81,54 @@ func TestRestoreSizeParsesStats(t *testing.T) {
 	}
 }
 
+// Shapes printed by restic 0.19.1 `restore --json` (a run that restores some files and skips others,
+// one that skips everything), plus a status sent before any file is counted.
+const restoreOutput = `{"message_type":"status","percent_done":0,"total_files":5,"files_skipped":1,"total_bytes":12,"bytes_skipped":3000000}
+{"message_type":"status","percent_done":0.37,"total_files":6,"files_restored":3,"files_skipped":4,"total_bytes":150000012,"bytes_restored":56386884,"bytes_skipped":453000000}
+{"message_type":"status","percent_done":0,"total_files":1,"files_skipped":5,"bytes_skipped":453000006}
+{"message_type":"status","percent_done":0,"total_files":0}
+{"message_type":"summary","total_files":6,"files_restored":6,"files_skipped":4,"total_bytes":150000012,"bytes_restored":150000012,"bytes_skipped":453000000}
+`
+
+func restore(f *run.Fake, status func(RestoreStatus)) error {
+	return newTestClient(f).RestoreFolder(context.Background(), "abc", "/Users/alice", "/Users/bob", "/tmp/excludes", status)
+}
+
 func TestRestoreFolderArgs(t *testing.T) {
-	f := &run.Fake{}
-	if err := newTestClient(f).RestoreFolder(context.Background(), "abc", "/Users/alice", "/Users/bob", []string{"/.config/floe"}); err != nil {
+	f := streamingFake("", nil)
+	if err := restore(f, func(RestoreStatus) {}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"restore", "abc:/Users/alice", "--target", "/Users/bob", "--exclude", "/.config/floe"}
+	want := []string{"restore", "--json", "abc:/Users/alice", "--target", "/Users/bob", "--exclude-file", "/tmp/excludes"}
 	if !slices.Equal(f.Calls[0].Args, want) || !slices.Contains(f.Calls[0].Env, "RESTIC_PROGRESS_FPS=1") {
 		t.Fatalf("call = %+v", f.Calls[0])
 	}
 }
 
-func TestRestoreFolderListsSkippedPaths(t *testing.T) {
-	script := `printf 'ignoring error for /Docs/b.txt: denied\nignoring error for /Docs/a.txt: denied\nignoring error for /Docs/a.txt: denied\nFatal: There were 3 errors\n' >&2; exit 1`
+func TestRestoreFolderReportsStatus(t *testing.T) {
+	var got []RestoreStatus
+	if err := restore(streamingFake("not json\n"+restoreOutput, nil), func(s RestoreStatus) { got = append(got, s) }); err != nil {
+		t.Fatal(err)
+	}
+	want := []RestoreStatus{
+		{Done: 3000000, Total: 3000012},
+		{Done: 56386884 + 453000000, Total: 150000012 + 453000000},
+		{Done: 453000006, Total: 453000006},
+		{Loading: true},
+		{Done: 150000012 + 453000000, Total: 150000012 + 453000000},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("status = %+v, want %+v", got, want)
+	}
+}
+
+func TestRestoreFolderCollectsErrors(t *testing.T) {
+	script := `printf '{"message_type":"error","error":{"message":"chmod /Users/bob/Docs/b.txt: denied"},"during":"restore","item":"/Docs/b.txt"}\n` +
+		`{"message_type":"error","error":{"message":"chmod /Users/bob/Docs/a.txt: denied"},"during":"restore","item":"/Docs/a.txt"}\n` +
+		`{"message_type":"error","error":{"message":"lchown /Users/bob/Docs/a.txt: denied"},"during":"restore","item":"/Docs/a.txt"}\n` +
+		`{"message_type":"exit_error","code":1,"message":"Fatal: There were 3 errors"}\n' >&2; exit 1`
 	f := &run.Fake{Default: run.Response{Err: exitErr(t, script)}}
-	err := newTestClient(f).RestoreFolder(context.Background(), "abc", "/Users/alice", "/Users/bob", nil)
+	err := restore(f, func(RestoreStatus) {})
 	var partial *PartialRestoreError
 	if !errors.As(err, &partial) || !slices.Equal(partial.Failed, []string{"/Docs/a.txt", "/Docs/b.txt"}) {
 		t.Fatalf("err = %v", err)
@@ -103,8 +136,8 @@ func TestRestoreFolderListsSkippedPaths(t *testing.T) {
 }
 
 func TestRestoreFolderKeepsFatalErrors(t *testing.T) {
-	f := &run.Fake{Default: run.Response{Err: exitErr(t, "echo 'Fatal: no matching ID found' >&2; exit 1")}}
-	err := newTestClient(f).RestoreFolder(context.Background(), "abc", "/Users/alice", "/Users/bob", nil)
+	f := &run.Fake{Default: run.Response{Err: exitErr(t, `echo '{"message_type":"exit_error","code":1,"message":"Fatal: no matching ID found"}' >&2; exit 1`)}}
+	err := restore(f, func(RestoreStatus) {})
 	var partial *PartialRestoreError
 	if err == nil || errors.As(err, &partial) {
 		t.Fatalf("err = %v, want a plain failure", err)

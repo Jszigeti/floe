@@ -84,6 +84,18 @@ func resticCall(f *run.Fake, sub string) *run.Cmd {
 func TestReplaceRestoresTheOldHomeAndTakesOverItsConfig(t *testing.T) {
 	home, dest, repo := startReplace(t)
 	f := replaceFake(nil, "1000")
+	base := f.Handler
+	var excludes string
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 0 && c.Args[0] == "restore" {
+			data, err := os.ReadFile(c.Args[len(c.Args)-1])
+			excludes = string(data)
+			if err != nil {
+				return "", err
+			}
+		}
+		return base(c)
+	}
 	out, err := runInit(f, dest+"\n\npw\n")
 	if err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
@@ -93,15 +105,17 @@ func TestReplaceRestoresTheOldHomeAndTakesOverItsConfig(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
 	}
-	want := []string{"restore", "bbb222:/Users/alice", "--target", home,
-		"--exclude", "/.local/bin/floe",
-		"--exclude", "/.local/share/floe",
-		"--exclude", "/.local/state/floe",
-		"--exclude", "/.config/floe",
-		"--exclude", "/Library/LaunchAgents/com.floe.backup.plist",
-		"--exclude", "/Library/Application Support/CloudDocs"}
-	if c := resticCall(f, "restore"); c == nil || !slices.Equal(c.Args, want) {
+	c := resticCall(f, "restore")
+	if c == nil || !slices.Equal(c.Args[:len(c.Args)-1], []string{"restore", "--json", "bbb222:/Users/alice", "--target", home, "--exclude-file"}) {
 		t.Fatalf("restore call = %+v", c)
+	}
+	wantExcludes := "/.local/bin/floe\n/.local/share/floe\n/.local/state/floe\n/.config/floe\n" +
+		"/Library/LaunchAgents/com.floe.backup.plist\n/Library/Application Support/CloudDocs\n"
+	if excludes != wantExcludes {
+		t.Fatalf("exclude file = %q", excludes)
+	}
+	if fileExists(c.Args[len(c.Args)-1]) {
+		t.Fatal("exclude file left behind")
 	}
 	if !f.CalledWith("security", "add-generic-password", "-w pw") {
 		t.Fatal("the pasted passphrase is not stored in the Keychain")
@@ -243,7 +257,7 @@ func TestReplaceStopsWhileAppsStayOpen(t *testing.T) {
 func TestReplaceListsFailedFilesAndGoesOn(t *testing.T) {
 	home, dest, repo := startReplace(t)
 	_, partial := run.ExecRunner{}.Run(context.Background(), run.Cmd{Name: "sh", Args: []string{"-c",
-		`printf 'ignoring error for /Library/Mail/V10/x.emlx: operation not permitted\n' >&2; exit 1`}})
+		`printf '{"message_type":"error","error":{"message":"open: operation not permitted"},"during":"restore","item":"/Library/Mail/V10/x.emlx"}\n' >&2; exit 1`}})
 	f := replaceFake(partial, "1000")
 	out, err := runInit(f, dest+"\n\npw\n")
 	if err != nil {

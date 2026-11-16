@@ -72,8 +72,19 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	}
 
 	p.cmd.Printf("→ Restoring %s into %s, this takes a while…\n", b.Name, home)
+	excludeFile, err := os.CreateTemp("", "floe-excludes-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(excludeFile.Name()) }()
+	if _, err := excludeFile.WriteString(strings.Join(replaceExcludes, "\n") + "\n"); err != nil {
+		return err
+	}
+	if err := excludeFile.Close(); err != nil {
+		return err
+	}
 	var partial *restic.PartialRestoreError
-	if err := client.RestoreFolder(ctx, snap.ShortID, oldHome, home, replaceExcludes); err != nil && !errors.As(err, &partial) {
+	if err := client.RestoreFolder(ctx, snap.ShortID, oldHome, home, excludeFile.Name(), func(restic.RestoreStatus) {}); err != nil && !errors.As(err, &partial) {
 		return fmt.Errorf("restoring %s: %w", b.Name, err)
 	}
 	recipe, err := dumpRecipe(ctx, p, client, snap.ShortID, oldHome, home)

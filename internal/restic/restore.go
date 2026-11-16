@@ -6,17 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
 )
 
 // ErrWrongPassphrase means restic exited 12: the passphrase does not open the repository.
 var ErrWrongPassphrase = errors.New("this passphrase does not open the backup")
-
-// restoreErrorRe matches restic's "ignoring error for <path>: <cause>", a file the restore skipped.
-var restoreErrorRe = regexp.MustCompile(`ignoring error for (.+?): `)
 
 // PartialRestoreError lists the paths, relative to the restored folder, restic could not write.
 type PartialRestoreError struct {
@@ -72,28 +69,69 @@ func parseTotalSize(out string) (int64, error) {
 	return stats.TotalSize, nil
 }
 
-// RestoreFolder restores folder of snapshot id into target, streaming progress to c.Progress.
-// Excludes starting with / are anchored at folder. Skipped files return a *PartialRestoreError.
-func (c *Client) RestoreFolder(ctx context.Context, id, folder, target string, excludes []string) error {
-	args := []string{"restore", id + ":" + folder, "--target", target}
-	for _, e := range excludes {
-		args = append(args, "--exclude", e)
+// RestoreStatus is how far a restore is, in bytes: Done counts restored and skipped bytes, Total
+// the bytes to restore plus the skipped ones. Loading means restic has not counted any file yet.
+type RestoreStatus struct {
+	Done, Total int64
+	Loading     bool
+}
+
+// restoreLine is one line of `restore --json`: a status or summary on stdout, an error on stderr.
+type restoreLine struct {
+	MessageType   string `json:"message_type"`
+	TotalBytes    int64  `json:"total_bytes"`
+	BytesRestored int64  `json:"bytes_restored"`
+	BytesSkipped  int64  `json:"bytes_skipped"`
+	Item          string `json:"item"`
+}
+
+// RestoreFolder restores folder of snapshot id into target, skipping the patterns of excludeFile,
+// anchored at folder. status gets every progress line, from the goroutine reading restic's output.
+// Files restic could not write return a *PartialRestoreError.
+func (c *Client) RestoreFolder(ctx context.Context, id, folder, target, excludeFile string, status func(RestoreStatus)) error {
+	w := &lineWriter{each: func(line []byte) {
+		var l restoreLine
+		if json.Unmarshal(line, &l) != nil || (l.MessageType != "status" && l.MessageType != "summary") {
+			return
+		}
+		total := l.TotalBytes + l.BytesSkipped
+		status(RestoreStatus{Done: l.BytesRestored + l.BytesSkipped, Total: total, Loading: total == 0})
+	}}
+	_, err := c.R.Run(ctx, run.Cmd{
+		Name:   c.Bin,
+		Args:   []string{"restore", "--json", id + ":" + folder, "--target", target, "--exclude-file", excludeFile},
+		Env:    c.env("RESTIC_PROGRESS_FPS=1"),
+		Stdout: w,
+	})
+	if len(w.rest) > 0 {
+		w.each(w.rest)
 	}
-	_, err := c.R.Run(ctx, run.Cmd{Name: c.Bin, Args: args, Env: c.env("RESTIC_PROGRESS_FPS=1"), Stdout: c.Progress})
 	var ee *exec.ExitError
 	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 		return err
 	}
-	matches := restoreErrorRe.FindAllStringSubmatch(err.Error(), maxUnreadablePaths)
-	if len(matches) == 0 {
-		return err
+	if failed := restoreErrors(err.Error()); len(failed) > 0 {
+		return &PartialRestoreError{Failed: failed}
 	}
-	paths := make([]string, len(matches))
-	for i, m := range matches {
-		paths[i] = m[1]
+	return err
+}
+
+// restoreErrors are the items of the error lines restic wrote on stderr, which ExecRunner folds
+// into msg after the command line, so each line is read from its last message.
+func restoreErrors(msg string) []string {
+	var paths []string
+	for _, line := range strings.Split(msg, "\n") {
+		i := strings.LastIndex(line, `{"message_type"`)
+		var l restoreLine
+		if i < 0 || json.Unmarshal([]byte(line[i:]), &l) != nil || l.MessageType != "error" || l.Item == "" {
+			continue
+		}
+		if paths = append(paths, l.Item); len(paths) == maxUnreadablePaths {
+			break
+		}
 	}
 	slices.Sort(paths)
-	return &PartialRestoreError{Failed: slices.Compact(paths)}
+	return slices.Compact(paths)
 }
 
 // Dump returns one file of snapshot id.
