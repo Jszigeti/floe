@@ -28,6 +28,10 @@ var masLineRe = regexp.MustCompile(`^==> Installing (.+?)(?: \([^)]*\))?$`)
 // refreshEvery is how often sudo's timestamp is renewed while mas runs, well within its five minutes.
 var refreshEvery = time.Minute
 
+// masTimeout cuts an App Store install that hangs, as mas does when the App Store is signed out;
+// it leaves room for Xcode's download on a slow line shared with the restore.
+var masTimeout = 30 * time.Minute
+
 // Install runs the plan in one pass: Homebrew when missing, the Brewfile, the casks, the App
 // Store apps, the VS Code extensions. Nothing takes the terminal: the Homebrew installer runs
 // with NONINTERACTIVE=1 and every sudo gets the password from d.Admin. A failing step
@@ -150,7 +154,9 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 	for _, id := range ids {
 		t.step(1, id)
 		stop := keepFresh(ctx, d.Admin)
-		err := t.run(ctx, d.Runner, run.Cmd{Name: mas, Args: []string{"install", id}, Env: d.Admin.Env()}, masLine)
+		masCtx, cancel := context.WithTimeout(ctx, masTimeout)
+		err := t.run(masCtx, d.Runner, run.Cmd{Name: mas, Args: []string{"install", id}, Env: d.Admin.Env()}, masLine)
+		cancel()
 		stop()
 		if err != nil {
 			rep.StoreFailed = append(rep.StoreFailed, id)

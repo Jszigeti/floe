@@ -274,6 +274,46 @@ func TestInstallKeepsTheTimestampFreshDuringADownload(t *testing.T) {
 	}
 }
 
+// stuckMas runs like Fake, except that mas installing id waits for its context to end, as mas
+// does with the App Store signed out.
+type stuckMas struct {
+	*run.Fake
+	mas, id string
+}
+
+func (s stuckMas) Run(ctx context.Context, c run.Cmd) (string, error) {
+	if c.Name == s.mas && c.Args[1] == s.id {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	return s.Fake.Run(ctx, c)
+}
+
+func TestInstallGivesUpOnAStuckAppStoreApp(t *testing.T) {
+	old := masTimeout
+	masTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { masTimeout = old })
+	f := &run.Fake{}
+	d := testDeps(t, f)
+	d.Runner = stuckMas{Fake: f, mas: installTool(t, d.BrewDirs[0], "mas"), id: "111"}
+
+	done := make(chan Report)
+	go func() { done <- Install(context.Background(), d, Plan{StoreIDs: []string{"111", "222"}}, nil) }()
+	var rep Report
+	select {
+	case rep = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a stuck mas must not hold the install")
+	}
+
+	if !slices.Equal(rep.StoreFailed, []string{"111"}) || !slices.Equal(rep.Commands, []string{"mas install 111"}) {
+		t.Fatalf("report = %+v, want the stuck app left to install later", rep)
+	}
+	if !f.CalledWith("mas", "install", "222") {
+		t.Fatal("the next app must still install")
+	}
+}
+
 func TestInstallParsesHomebrew7Failures(t *testing.T) {
 	f := &run.Fake{}
 	d := testDeps(t, f)

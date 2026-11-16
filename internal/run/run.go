@@ -3,10 +3,12 @@ package run
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"time"
 )
 
 type Cmd struct {
@@ -26,6 +28,8 @@ type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 	cmd := exec.CommandContext(ctx, c.Name, c.Args...)
+	// A child the command left running keeps its output open, so a killed command would never return.
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Env = append(os.Environ(), c.Env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -38,7 +42,8 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 		cmd.Stdout = io.MultiWriter(&stdout, os.Stdout)
 		cmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
 	}
-	if err := cmd.Run(); err != nil {
+	// ErrWaitDelay alone means the command itself succeeded and only its child still held the output.
+	if err := cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
 		return stdout.String(), fmt.Errorf("%s %v: %w: %s", c.Name, c.Args, err, stderr.String())
 	}
 	return stdout.String(), nil

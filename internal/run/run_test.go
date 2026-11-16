@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExecRunnerCapturesStdout(t *testing.T) {
@@ -50,6 +51,21 @@ func TestExecRunnerErrorIncludesStderr(t *testing.T) {
 		Cmd{Name: "sh", Args: []string{"-c", "echo boom >&2; exit 3"}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want to contain stderr", err)
+	}
+}
+
+// A child left running in the background keeps the output pipe open after its parent is killed,
+// as sudo's mas does once floe gives up on mas: Run must return anyway.
+func TestExecRunnerReturnsOnCancelThoughAChildKeepsTheOutput(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := ExecRunner{}.Run(ctx, Cmd{Name: "sh", Args: []string{"-c", "sleep 30 & sleep 30"}})
+	if err == nil {
+		t.Fatal("a cancelled command must fail")
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("Run returned %s after the cancel, the background child held it", took)
 	}
 }
 
@@ -135,5 +151,12 @@ func TestExecRunnerTerminalHandsOverStdinAndShowsOutput(t *testing.T) {
 	}
 	if data, err := os.ReadFile(shown.Name()); err != nil || strings.TrimSpace(string(data)) != "got hi" {
 		t.Fatalf("shown = %q, %v", data, err)
+	}
+}
+
+func TestExecRunnerSucceedsThoughAChildKeepsTheOutput(t *testing.T) {
+	out, err := ExecRunner{}.Run(context.Background(), Cmd{Name: "sh", Args: []string{"-c", "echo done; sleep 30 &"}})
+	if err != nil || out != "done\n" {
+		t.Fatalf("got %q, %v, want the command's own success", out, err)
 	}
 }
