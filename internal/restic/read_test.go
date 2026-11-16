@@ -3,7 +3,6 @@ package restic
 import (
 	"context"
 	"errors"
-	"slices"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/config"
@@ -111,12 +110,10 @@ func TestUnlockRunsUnlock(t *testing.T) {
 	}
 }
 
-func TestForgetGroupsAllSnapshotsTogether(t *testing.T) {
+func TestForgetGroupsByTagsAndKeepsReplaced(t *testing.T) {
 	f := &run.Fake{}
 	_ = newTestClient(f).Forget(context.Background(), config.Retention{Daily: 7, Weekly: 4, Monthly: 6})
-	args := f.Calls[0].Args
-	i := slices.Index(args, "--group-by")
-	if i < 0 || i+1 >= len(args) || args[i+1] != "" {
-		t.Fatalf("args = %q, want --group-by ''", args)
+	if !f.CalledWith("forget", "--group-by tags", "--keep-tag replaced") {
+		t.Fatalf("args = %q, want --group-by tags and --keep-tag replaced", f.Calls[0].Args)
 	}
 }

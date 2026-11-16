@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -77,6 +78,53 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(target, src, "keep.txt"))
 	if err != nil || string(got) != "v1" {
 		t.Fatalf("restored content = %q, err = %v, want v1 from first snapshot", got, err)
+	}
+}
+
+func TestTagUntagged(t *testing.T) {
+	origBin := realResticBinPath()
+	t.Setenv("HOME", t.TempDir())
+	seedResticFromRealHome(t, origBin)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	bin, err := restic.EnsureBinary(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoreResticToRealHome(t, origBin, bin)
+
+	home := os.Getenv("HOME")
+	src := filepath.Join(home, "data")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &restic.Client{Bin: bin, Repo: filepath.Join(home, "repo"), Pass: "integration-pw", R: run.ExecRunner{}}
+	if err := client.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Backup(ctx, []string{src}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Backup(ctx, []string{src}, nil, []string{"apps"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := client.TagUntagged(ctx, "home"); err != nil {
+		t.Fatal(err)
+	}
+
+	snaps, err := client.Snapshots(ctx)
+	if err != nil || len(snaps) != 2 {
+		t.Fatalf("snapshots = %+v (%v), want 2", snaps, err)
+	}
+	tags := [][]string{snaps[0].Tags, snaps[1].Tags}
+	if !slices.ContainsFunc(tags, func(tt []string) bool { return slices.Equal(tt, []string{"home"}) }) ||
+		!slices.ContainsFunc(tags, func(tt []string) bool { return slices.Equal(tt, []string{"apps"}) }) {
+		t.Fatalf("tags = %q, want one [home] and one [apps] untouched", tags)
 	}
 }
 

@@ -37,12 +37,16 @@ func (c *Client) Open(ctx context.Context) error {
 	return err
 }
 
-// Latest is the newest snapshot: `snapshots --latest 1` keeps one per host and path, not one overall.
-func (c *Client) Latest(ctx context.Context) (Snapshot, error) {
+// Latest is the newest snapshot carrying tag: `snapshots --latest 1` keeps one per host and path,
+// not one overall. Snapshots with no tag were made before tags existed and count as home.
+func (c *Client) Latest(ctx context.Context, tag string) (Snapshot, error) {
 	snaps, err := c.Snapshots(ctx)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	snaps = slices.DeleteFunc(snaps, func(s Snapshot) bool {
+		return !slices.Contains(s.Tags, tag) && (tag != "home" || len(s.Tags) > 0)
+	})
 	if len(snaps) == 0 {
 		return Snapshot{}, errors.New("the backup has no snapshot yet")
 	}

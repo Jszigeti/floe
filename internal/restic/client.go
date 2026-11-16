@@ -80,10 +80,13 @@ func (c *Client) Init(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) Backup(ctx context.Context, paths, excludes []string) error {
+func (c *Client) Backup(ctx context.Context, paths, excludes, tags []string) error {
 	args := []string{"backup"}
 	if c.Progress == nil {
 		args = append(args, "--quiet")
+	}
+	for _, t := range tags {
+		args = append(args, "--tag", t)
 	}
 	args = append(args, paths...)
 	for _, e := range excludes {
@@ -95,6 +98,25 @@ func (c *Client) Backup(ctx context.Context, paths, excludes []string) error {
 	}
 	_, err := c.R.Run(ctx, run.Cmd{Name: c.Bin, Args: args, Env: c.env("RESTIC_PROGRESS_FPS=1"), Stdout: c.Progress})
 	return classifyBackupErr(err)
+}
+
+// TagUntagged adds tag to every snapshot that has no tag, the ones made before snapshots carried their kind.
+func (c *Client) TagUntagged(ctx context.Context, tag string) error {
+	_, err := c.run(ctx, "tag", "--tag", "", "--add", tag)
+	return err
+}
+
+// Tag adds and removes tags on snapshot id.
+func (c *Client) Tag(ctx context.Context, id string, add, remove []string) error {
+	args := []string{"tag"}
+	for _, t := range add {
+		args = append(args, "--add", t)
+	}
+	for _, t := range remove {
+		args = append(args, "--remove", t)
+	}
+	_, err := c.run(ctx, append(args, id)...)
+	return err
 }
 
 func classifyBackupErr(err error) error {

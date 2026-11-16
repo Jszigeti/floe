@@ -14,6 +14,7 @@ type Snapshot struct {
 	Time    time.Time `json:"time"`
 	ShortID string    `json:"short_id"`
 	Paths   []string  `json:"paths"`
+	Tags    []string  `json:"tags"`
 }
 
 func (c *Client) Snapshots(ctx context.Context) ([]Snapshot, error) {
@@ -28,10 +29,10 @@ func (c *Client) Snapshots(ctx context.Context) ([]Snapshot, error) {
 	return snaps, nil
 }
 
-// Forget groups every snapshot together: a repository belongs to one Mac at a time, so
-// snapshots taken under an older name age out with the rest instead of being kept forever.
+// Forget groups snapshots by tags only: a repository belongs to one Mac at a time, so
+// snapshots taken under an older name age out with the rest, while each kind ages on its own.
 func (c *Client) Forget(ctx context.Context, r config.Retention) error {
-	_, err := c.run(ctx, "forget", "--prune", "--group-by", "",
+	_, err := c.run(ctx, "forget", "--prune", "--group-by", "tags", "--keep-tag", "replaced",
 		"--keep-daily", strconv.Itoa(r.Daily),
 		"--keep-weekly", strconv.Itoa(r.Weekly),
 		"--keep-monthly", strconv.Itoa(r.Monthly))

@@ -56,7 +56,7 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := waitForFullDiskAccess(p, home); err != nil {
 		return err
 	}
-	snap, err := client.Latest(ctx)
+	snap, err := client.Latest(ctx, "home")
 	if err != nil {
 		return err
 	}

@@ -37,15 +37,36 @@ func TestLatestPicksTheNewestAcrossHosts(t *testing.T) {
  {"time":"2026-07-09T13:00:00Z","short_id":"old","paths":["/Users/x"]}
 ]`},
 	}}
-	snap, err := newTestClient(f).Latest(context.Background())
+	snap, err := newTestClient(f).Latest(context.Background(), "home")
 	if err != nil || snap.ShortID != "new" {
 		t.Fatalf("Latest = %+v, %v", snap, err)
 	}
 }
 
+func TestLatestPicksNewestOfTag(t *testing.T) {
+	f := &run.Fake{Responses: map[string]run.Response{
+		"restic snapshots --json": {Out: `[
+ {"time":"2026-07-11T13:00:00Z","short_id":"apps","paths":["/Applications/X.app"],"tags":["apps"]},
+ {"time":"2026-07-10T13:00:00Z","short_id":"untagged","paths":["/Users/x"]},
+ {"time":"2026-07-09T13:00:00Z","short_id":"home","paths":["/Users/x"],"tags":["home"]}
+]`},
+	}}
+	snap, err := newTestClient(f).Latest(context.Background(), "home")
+	if err != nil || snap.ShortID != "untagged" {
+		t.Fatalf("Latest(home) = %+v, %v, want the untagged snapshot", snap, err)
+	}
+	snap, err = newTestClient(f).Latest(context.Background(), "apps")
+	if err != nil || snap.ShortID != "apps" || !slices.Equal(snap.Tags, []string{"apps"}) {
+		t.Fatalf("Latest(apps) = %+v, %v", snap, err)
+	}
+	if _, err := newTestClient(f).Latest(context.Background(), "replaced"); err == nil {
+		t.Fatal("want an error when no snapshot carries the tag")
+	}
+}
+
 func TestLatestFailsWithoutSnapshot(t *testing.T) {
 	f := &run.Fake{Responses: map[string]run.Response{"restic snapshots --json": {Out: "[]"}}}
-	if _, err := newTestClient(f).Latest(context.Background()); err == nil {
+	if _, err := newTestClient(f).Latest(context.Background(), "home"); err == nil {
 		t.Fatal("want an error for a backup with no snapshot")
 	}
 }

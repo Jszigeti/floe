@@ -139,7 +139,7 @@ func Run(ctx context.Context, d Deps) error {
 
 	excludes := append([]string{d.Cfg.Destination}, d.Cfg.Scope.Exclude...)
 	incomplete := false
-	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes); err != nil {
+	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes, []string{"home"}); err != nil {
 		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would
 		// be crying wolf, so the notice is weekly.
 		if errors.Is(err, restic.ErrIncomplete) {
