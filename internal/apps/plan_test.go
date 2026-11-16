@@ -1,0 +1,87 @@
+package apps
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"testing"
+
+	"github.com/Jszigeti/floe/internal/inventory"
+)
+
+const recipeBrewfile = `tap "cirruslabs/cli"
+brew "jq"
+cask "google-chrome"
+mas "Keynote", id: 409183694
+vscode "ms-python.python"
+`
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// installTool puts an executable named name in dir, as Homebrew would.
+func TestPlanFromSplitsBrewfile(t *testing.T) {
+	recipe := t.TempDir()
+	writeFile(t, filepath.Join(recipe, "Brewfile"), recipeBrewfile, 0o644)
+	writeFile(t, filepath.Join(recipe, "applications.txt"), ".DS_Store\nZed.app\n", 0o644)
+	list := []inventory.App{
+		{Name: "Google Chrome", Source: inventory.SourceCask, Cask: "google-chrome"},
+		{Name: "Zed", Source: inventory.SourceCask, Cask: "zed"},
+		{Name: "Zed copy", Source: inventory.SourceCask, Cask: "zed"},
+		{Name: "Keynote", Source: inventory.SourceAppStore, StoreID: "409183694"},
+		{Name: "Voicebox", Source: inventory.SourceBackup},
+	}
+
+	p, err := PlanFrom(recipe, list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := readFile(t, p.Brewfile), "tap \"cirruslabs/cli\"\nbrew \"jq\"\ncask \"google-chrome\"\n"; got != want {
+		t.Errorf("Brewfile = %q, want %q", got, want)
+	}
+	if got, want := readFile(t, p.VSCode), "vscode \"ms-python.python\"\n"; got != want {
+		t.Errorf("VSCode = %q, want %q", got, want)
+	}
+	if !slices.Equal(p.Casks, []string{"zed"}) || !slices.Equal(p.StoreIDs, []string{"409183694"}) || !slices.Equal(p.Expected, []string{"Zed.app"}) {
+		t.Errorf("plan = %+v", p)
+	}
+	if readFile(t, filepath.Join(recipe, "Brewfile")) != recipeBrewfile {
+		t.Error("the recipe's own Brewfile must stay whole, a resumed run plans from it again")
+	}
+}
+
+func TestPlanFromWithoutBrewfile(t *testing.T) {
+	p, err := PlanFrom(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Brewfile != "" || p.VSCode != "" || p.Casks != nil || p.StoreIDs != nil {
+		t.Fatalf("plan = %+v", p)
+	}
+}
+
+func TestListedAppsMatchesCasksAndStoreIDs(t *testing.T) {
+	recipe := t.TempDir()
+	writeFile(t, filepath.Join(recipe, "applications.txt"), "Google Chrome.app\n.DS_Store\nZed.app\n", 0o644)
+	writeFile(t, filepath.Join(recipe, "mas.txt"), "111  Keynote  (15.2)\n", 0o644)
+
+	got := ListedApps(recipe, inventory.CaskIndex{"Google Chrome.app": "google-chrome"})
+
+	want := []inventory.App{
+		{Name: "Google Chrome", Source: inventory.SourceCask, Cask: "google-chrome"},
+		{Source: inventory.SourceAppStore, StoreID: "111"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListedApps = %+v, want %+v", got, want)
+	}
+}
+
+// fullPlan is a plan with one entry of each kind, its filtered Brewfiles written in a temp dir.
