@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Jszigeti/floe/internal/askpass"
 	"github.com/Jszigeti/floe/internal/cli"
 	"github.com/Jszigeti/floe/internal/icloud"
 	"github.com/Jszigeti/floe/internal/inventory"
@@ -14,6 +15,12 @@ import (
 var version = "dev" // overridden by goreleaser ldflags
 
 func main() {
+	if socket := os.Getenv(askpass.SocketEnv); socket != "" {
+		if askpass.Answer(socket, os.Stdout) != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if err := icloud.AllowDatalessDownloads(); err != nil {
 		fmt.Fprintln(os.Stderr, "floe: cannot enable iCloud downloads:", err)
 	}
