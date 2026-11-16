@@ -221,10 +221,7 @@ func Parse(data string) (Config, error) {
 // points at this one. The character after oldHome must end a name, which keeps /Users/alice2,
 // /Users/alice-work and /Users/alice.old out of a move from /Users/alice.
 func (c Config) Rehome(oldHome, newHome string) Config {
-	re := regexp.MustCompile(regexp.QuoteMeta(oldHome) + `([^\w.-]|$)`)
-	rehome := func(s string) string {
-		return re.ReplaceAllStringFunc(s, func(m string) string { return newHome + m[len(oldHome):] })
-	}
+	rehome := Rehomer(oldHome, newHome)
 	move := func(list []string) []string {
 		out := slices.Clone(list)
 		for i := range out {
@@ -238,4 +235,12 @@ func (c Config) Rehome(oldHome, newHome string) Config {
 	c.Hooks.Pre = move(c.Hooks.Pre)
 	c.Hooks.Post = move(c.Hooks.Post)
 	return c
+}
+
+// Rehomer returns the rewrite Rehome applies to each path, for any text that names paths.
+func Rehomer(oldHome, newHome string) func(string) string {
+	re := regexp.MustCompile(regexp.QuoteMeta(oldHome) + `([^\w.-]|$)`)
+	return func(s string) string {
+		return re.ReplaceAllStringFunc(s, func(m string) string { return newHome + m[len(oldHome):] })
+	}
 }
