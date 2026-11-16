@@ -14,6 +14,7 @@ import (
 	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
+	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 )
@@ -44,7 +45,8 @@ function run(argv) {
 }`
 
 // runReplace makes this Mac the continuation of b: its files, its floe settings, its history.
-func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, b foundBackup) error {
+// A resume carries the state of the interrupted run, a new Replace a zero State.
+func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, b foundBackup, resume replace.State) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -53,18 +55,15 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	if err := askBackupPassphrase(ctx, p, d.Runner, client, b.Name); err != nil {
 		return err
 	}
-	if err := waitForFullDiskAccess(p, home); err != nil {
-		return err
-	}
-	snap, err := client.Latest(ctx, "home")
+	st, err := pinSnapshot(ctx, client, b, resume)
 	if err != nil {
 		return err
 	}
-	if len(snap.Paths) != 1 {
-		return fmt.Errorf("snapshot %s covers %d folders, not one home folder: restore it with floe restore", snap.ShortID, len(snap.Paths))
+	if err := waitForFullDiskAccess(p, home); err != nil {
+		return err
 	}
-	oldHome := snap.Paths[0]
-	if err := checkFreeSpace(ctx, client, snap.ShortID, home); err != nil {
+	id, oldHome := st.SnapshotID, st.OldHome
+	if err := checkFreeSpace(ctx, client, id, home); err != nil {
 		return err
 	}
 	if err := waitForAppsToQuit(ctx, p, d.Runner); err != nil {
@@ -84,14 +83,14 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 		return err
 	}
 	var partial *restic.PartialRestoreError
-	if err := client.RestoreFolder(ctx, snap.ShortID, oldHome, home, excludeFile.Name(), func(restic.RestoreStatus) {}); err != nil && !errors.As(err, &partial) {
+	if err := client.RestoreFolder(ctx, id, oldHome, home, excludeFile.Name(), func(restic.RestoreStatus) {}); err != nil && !errors.As(err, &partial) {
 		return fmt.Errorf("restoring %s: %w", b.Name, err)
 	}
-	recipe, err := dumpRecipe(ctx, p, client, snap.ShortID, oldHome, home)
+	recipe, err := dumpRecipe(ctx, p, client, id, oldHome, home)
 	if err != nil {
 		return err
 	}
-	cfg, err := takeOverConfig(ctx, p, client, snap.ShortID, oldHome, home)
+	cfg, err := takeOverConfig(ctx, p, client, id, oldHome, home)
 	if err != nil {
 		return err
 	}
@@ -120,11 +119,18 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	}
 	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n", b.Name, formatHour(cfg.Hour))
 	p.cmd.Println("Restart this Mac now, so macOS and your apps reload the restored data and keychain. Then run `floe doctor`.")
-	return nil
+	return replace.ClearState()
 }
 
 // askBackupPassphrase asks until a passphrase opens the backup, then stores it in the Keychain.
 func askBackupPassphrase(ctx context.Context, p prompter, r run.Runner, client *restic.Client, name string) error {
+	// An interrupted Replace stored the passphrase that opened this backup.
+	if pass, err := keychain.Get(ctx, r); err == nil && pass != "" {
+		client.Pass = pass
+		if client.Open(ctx) == nil {
+			return nil
+		}
+	}
 	for {
 		pass := p.ask(fmt.Sprintf("Passphrase of %s's backup, from your password manager", name), "")
 		if pass == "" {

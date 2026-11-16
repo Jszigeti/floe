@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/notify"
+	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/scan"
 	"github.com/Jszigeti/floe/internal/ui"
@@ -40,13 +42,22 @@ func newInitCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// An unreadable id stays empty and is recorded on the next run.
+			cfg.Machine, _ = machineID(ctx, d.Runner)
+			resume, resuming, err := offerResume(p)
+			if err != nil {
+				return err
+			}
+			if resuming {
+				// A replaced backup is always <dest>/Floe.backup/<name>, as findBackups lists it.
+				dest := filepath.Dir(filepath.Dir(resume.Repo))
+				return runReplace(ctx, p, d, bin, dest, cfg.Machine, foundBackup{Name: resume.Backup, Path: resume.Repo}, resume)
+			}
 			dest, err := normalizeDestination(p.ask("Backup destination", cfg.Destination))
 			if err != nil {
 				return err
 			}
 			cfg.Destination = dest
-			// An unreadable id stays empty and is recorded on the next run.
-			cfg.Machine, _ = machineID(ctx, d.Runner)
 			cfg.Repo = ownRepo(dest, cfg.Machine)
 			if cfg.Repo == "" {
 				found, err := findBackups(dest)
@@ -58,12 +69,12 @@ func newInitCmd(d Deps) *cobra.Command {
 					if err != nil {
 						return err
 					}
-					b, replace, err := chooseBackup(p, found, name, time.Now())
+					b, replacing, err := chooseBackup(p, found, name, time.Now())
 					if err != nil {
 						return err
 					}
-					if replace {
-						return runReplace(ctx, p, d, bin, dest, cfg.Machine, b)
+					if replacing {
+						return runReplace(ctx, p, d, bin, dest, cfg.Machine, b, replace.State{})
 					}
 				}
 				if cfg.Repo, err = freeRepoPath(dest); err != nil {
@@ -236,6 +247,15 @@ func (p prompter) secret(prompt string) (string, bool) {
 		return "", false
 	}
 	return p.in.Text(), true
+}
+
+// answer reads one line, trimmed; false when the input is closed.
+func (p prompter) answer(prompt string) (string, bool) {
+	p.cmd.Printf("%s: ", prompt)
+	if !p.in.Scan() {
+		return "", false
+	}
+	return strings.TrimSpace(p.in.Text()), true
 }
 
 // confirm waits for Enter; q or a closed input is false, so a wait never loops on a piped stdin.
