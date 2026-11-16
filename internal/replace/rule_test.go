@@ -58,6 +58,8 @@ var ruleDropped = []string{
 	"Library/Application Support/networkserviceproxy/x",
 	"Library/Application Support/CloudKit.store-wal",
 	"Library/Application Support/AddressBook/x",
+	"Library/Application Support/AskPermission/x",
+	"Library/Application Support/familycircled/x",
 	"Library/Application Support/Already There/x",
 	"Library/Application Support/steam-like/x",
 	"Library/Application Support/1A2B3C4D-0000-1111-2222-333344445555/x",

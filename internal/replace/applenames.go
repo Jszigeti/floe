@@ -7,6 +7,7 @@ package replace
 var appleNames = []string{
 	"AddressBook",             // Contacts database
 	"Animoji",                 // Messages stickers
+	"AskPermission",           // Screen Time purchase requests
 	"appplaceholdersyncd",     // App Store placeholder daemon
 	"assistant_service",       // Siri
 	"CallHistoryDB",           // Phone and FaceTime calls
@@ -19,6 +20,7 @@ var appleNames = []string{
 	"default.store*",          // Core Data store of Apple services, its -shm and -wal
 	"DifferentialPrivacy",     // analytics daemon
 	"FaceTime",                // FaceTime
+	"familycircled",           // Family Sharing
 	"FileProvider",            // iCloud Drive and cloud storage state
 	"homeenergyd",             // Home energy daemon
 	"icdd",                    // Image Capture daemon
