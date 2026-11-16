@@ -14,8 +14,8 @@ func TestExecRunnerCapturesStdout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "" {
-		t.Fatalf("out = %q, want nothing captured when streaming", out)
+	if strings.TrimSpace(out) != "hi" {
+		t.Fatalf("out = %q", out)
 	}
 }
 
@@ -40,8 +40,8 @@ func TestExecRunnerStreamsStdout(t *testing.T) {
 	if strings.TrimSpace(buf.String()) != "hi" {
 		t.Fatalf("buf = %q", buf.String())
 	}
-	if strings.TrimSpace(out) != "hi" {
-		t.Fatalf("out = %q", out)
+	if out != "" {
+		t.Fatalf("out = %q, want nothing captured when streaming", out)
 	}
 }
 
