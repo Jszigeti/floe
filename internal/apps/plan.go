@@ -75,7 +75,7 @@ func (p Plan) NeedsAdmin(brewDirs []string) bool {
 	if p.Brewfile == "" && p.VSCode == "" {
 		return false
 	}
-	if findTool("brew", brewDirs) == "" {
+	if FindTool("brew", brewDirs) == "" {
 		return true
 	}
 	data, _ := os.ReadFile(p.Brewfile) // an unreadable Brewfile installs nothing

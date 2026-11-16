@@ -231,8 +231,9 @@ func TestInstallKeepsWhyABrewBundleFailed(t *testing.T) {
 	if want := []string{"brew bundle failed on Brewfile.apps: Error: No such file or directory @ rb_sysopen"}; !slices.Equal(rep.Notes, want) {
 		t.Fatalf("notes = %q, want %q", rep.Notes, want)
 	}
-	if !slices.Equal(rep.BrewFailed, []string{"ms-python.python"}) {
-		t.Fatalf("failed = %q", rep.BrewFailed)
+	// The summary reads BrewFailed for the apps the Brewfile left, extensions have their own list.
+	if len(rep.BrewFailed) != 0 || !slices.Equal(rep.ExtensionsFailed, []string{"ms-python.python"}) {
+		t.Fatalf("failed = %q, extensions failed = %q", rep.BrewFailed, rep.ExtensionsFailed)
 	}
 }
 
@@ -469,8 +470,8 @@ func TestFindToolPrefersPath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
 	want := installTool(t, dir, "brew")
-	if got := findTool("brew", []string{t.TempDir()}); got != want {
-		t.Fatalf("findTool = %q, want %q", got, want)
+	if got := FindTool("brew", []string{t.TempDir()}); got != want {
+		t.Fatalf("FindTool = %q, want %q", got, want)
 	}
 }
 

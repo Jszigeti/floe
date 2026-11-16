@@ -46,14 +46,14 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 	t := &tracker{report: progress, total: entries(p.Brewfile) + len(p.Casks) + len(p.StoreIDs) + entries(p.VSCode)}
 	t.emit()
 	var rep Report
-	brew := findTool("brew", d.BrewDirs)
+	brew := FindTool("brew", d.BrewDirs)
 	if brew == "" && (p.Brewfile != "" || p.VSCode != "" || len(p.Casks) > 0) {
 		brew = rep.homebrew(ctx, d, t)
 	}
-	rep.FromHomebrew = rep.bundle(ctx, d, t, brew, p.Brewfile)
+	rep.FromHomebrew = rep.bundle(ctx, d, t, brew, p.Brewfile, &rep.BrewFailed)
 	rep.casks(ctx, d, t, brew, p.Casks)
 	rep.store(ctx, d, t, p.StoreIDs)
-	rep.bundle(ctx, d, t, brew, p.VSCode, vscodeEnv(d.AppsRoot)...)
+	rep.bundle(ctx, d, t, brew, p.VSCode, &rep.ExtensionsFailed, vscodeEnv(d.AppsRoot)...)
 	rep.Missing = missingApps(p.Expected, d.AppsRoot)
 	return rep
 }
@@ -70,7 +70,7 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	t.step(0, "Homebrew")
 	installer := run.Cmd{Name: "/bin/bash", Args: []string{"-c", HomebrewInstall}, Env: append([]string{"NONINTERACTIVE=1"}, d.Admin.Env()...)}
 	err := t.run(ctx, d.Runner, installer, brewLine)
-	if brew := findTool("brew", d.BrewDirs); brew != "" {
+	if brew := FindTool("brew", d.BrewDirs); brew != "" {
 		return brew
 	}
 	rep.Commands = append(rep.Commands, HomebrewInstall)
@@ -82,9 +82,9 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	return ""
 }
 
-// bundle installs file's entries and returns how many of its casks, the apps, are in place:
-// none when brew bundle failed without naming its failures.
-func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, env ...string) int {
+// bundle installs file's entries, adds the ones that failed to failedList, and returns how many
+// of its casks, the apps, are in place: none when brew bundle failed without naming its failures.
+func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, failedList *[]string, env ...string) int {
 	if file == "" {
 		return 0
 	}
@@ -106,7 +106,7 @@ func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file st
 	for _, m := range brewFailedRe.FindAllStringSubmatch(err.Error(), -1) {
 		failed = append(failed, strings.TrimSpace(m[1]+m[2]))
 	}
-	rep.BrewFailed = append(rep.BrewFailed, failed...)
+	*failedList = append(*failedList, failed...)
 	if len(failed) == 0 {
 		rep.Notes = append(rep.Notes, fmt.Sprintf("brew bundle failed on %s: %s", filepath.Base(file), reason(c, err)))
 		return 0
@@ -187,7 +187,7 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 	if len(ids) == 0 {
 		return
 	}
-	mas := findTool("mas", d.BrewDirs)
+	mas := FindTool("mas", d.BrewDirs)
 	if mas == "" {
 		t.step(len(ids), "")
 		rep.Commands = append(rep.Commands, "brew install mas && mas install "+strings.Join(ids, " "))

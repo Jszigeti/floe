@@ -40,6 +40,8 @@ type Report struct {
 	Commands    []string // commands left, offered as end-of-replace actions and saved in the report
 	Notes       []string // why a step left a command, when no failed entry says it
 	Homebrew    string   // why Homebrew is missing, "" when it is there
+	// VS Code extensions Homebrew could not install, apart since no app comes back with them.
+	ExtensionsFailed []string
 	// Apps installed or already there, per source: casks and App Store ids, not formulae or extensions.
 	FromHomebrew, FromAppStore int
 }
@@ -62,8 +64,8 @@ func entries(file string) int {
 	return n
 }
 
-// findTool looks on PATH first, then where Homebrew installs.
-func findTool(name string, dirs []string) string {
+// FindTool looks on PATH first, then where Homebrew installs.
+func FindTool(name string, dirs []string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
