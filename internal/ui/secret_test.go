@@ -124,3 +124,40 @@ func TestReadSecretReadsOneLineOffATerminal(t *testing.T) {
 		t.Fatalf("no line left must be an error, got %q", s)
 	}
 }
+
+// floe's signal handler turns the echo back on before a signal ends floe, and only while the
+// prompt is open; a signal floe started with ignored, SIGHUP under nohup, it leaves alone.
+func TestReadSecretRestoresEchoOnSignal(t *testing.T) {
+	cleanups, removed := make(chan func(), 1), make(chan struct{}, 1)
+	on := onSignal
+	onSignal = func(f func()) func() {
+		cleanups <- f
+		return func() { removed <- struct{}{} }
+	}
+	t.Cleanup(func() { onSignal = on })
+	master, slave := openPty(t)
+	got := readSecretAsync(slave)
+	waitEchoOff(t, slave)
+
+	var cleanup func()
+	select {
+	case cleanup = <-cleanups:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the prompt must register with floe's signal handler")
+	}
+	cleanup()
+	if !echoOn(t, slave) {
+		t.Fatal("a signal must turn the echo back on")
+	}
+	if _, err := master.WriteString("pw\n"); err != nil {
+		t.Fatal(err)
+	}
+	if res := <-got; res.err != nil || res.s != "pw" {
+		t.Fatalf("ReadSecret = %q, %v", res.s, res.err)
+	}
+	select {
+	case <-removed:
+	default:
+		t.Fatal("the prompt must leave floe's signal handler on return")
+	}
+}

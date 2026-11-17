@@ -29,7 +29,15 @@ func fakeSignals(t *testing.T) *fake {
 		return f.sigs, func() { f.mu.Lock(); f.stops++; f.mu.Unlock() }
 	}
 	raise = func(s os.Signal) { f.raised <- s }
-	t.Cleanup(func() { watch, raise = w, r })
+	t.Cleanup(func() {
+		watch, raise = w, r
+		mu.Lock()
+		defer mu.Unlock()
+		if stop != nil {
+			stop() // a cleanup the test left registered must not keep the fake's watch for the next test
+		}
+		cleanups, stop = map[int]func(){}, nil
+	})
 	return f
 }
 
@@ -101,11 +109,12 @@ func TestAStuckCleanupHoldsBackNoOther(t *testing.T) {
 // Under nohup SIGHUP is ignored: catching it would close everything and leave floe running.
 func TestEndingSignalsLeaveOutTheIgnoredOnes(t *testing.T) {
 	got := endingSignals(func(s os.Signal) bool { return s == syscall.SIGHUP })
-	if !slices.Equal(got, []os.Signal{syscall.SIGINT, syscall.SIGTERM}) {
-		t.Fatalf("watched %v, want SIGINT and SIGTERM only", got)
+	if !slices.Equal(got, []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT}) {
+		t.Fatalf("watched %v, want SIGINT, SIGTERM and SIGQUIT only", got)
 	}
-	if got := endingSignals(func(os.Signal) bool { return false }); len(got) != 3 {
-		t.Fatalf("watched %v, want all three", got)
+	all := []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
+	if got := endingSignals(func(os.Signal) bool { return false }); !slices.Equal(got, all) {
+		t.Fatalf("watched %v, want %v, Ctrl-\\ included", got, all)
 	}
 }
 

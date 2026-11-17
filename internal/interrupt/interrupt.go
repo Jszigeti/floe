@@ -1,6 +1,7 @@
 // Package interrupt is floe's handler for the signals that end it: it runs what must be undone
-// first, then raises the signal once, so floe still ends as it meant to. While a password prompt
-// is open, internal/ui/secret.go keeps its own handler, which restores the terminal.
+// first, then raises the signal once, so floe still ends as it meant to. Every cleanup goes
+// through it, the password prompt's echo included, so a signal floe started with ignored stays
+// ignored everywhere.
 package interrupt
 
 import (
@@ -19,7 +20,7 @@ var ending = endingSignals(signal.Ignored)
 // endingSignals leaves out the signals floe started with ignored, SIGHUP under nohup: raised
 // again, they would not end floe, which would go on with everything closed.
 func endingSignals(ignored func(os.Signal) bool) []os.Signal {
-	return slices.DeleteFunc([]os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP}, ignored)
+	return slices.DeleteFunc([]os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}, ignored)
 }
 
 // watch delivers the signals that end floe, until stop.
@@ -30,7 +31,9 @@ var watch = func() (<-chan os.Signal, func()) {
 }
 
 // raise sends s to floe again, which ends it once nothing catches it.
-var raise = func(s os.Signal) { _ = syscall.Kill(os.Getpid(), s.(syscall.Signal)) }
+var raise = func(s os.Signal) {
+	_ = syscall.Kill(os.Getpid(), s.(syscall.Signal)) // floe's own pid with a valid signal: kill(2) cannot fail
+}
 
 var (
 	mu       sync.Mutex
@@ -39,9 +42,10 @@ var (
 	stop     func() // ends the current watch, nil when nothing is registered
 )
 
-// OnSignal runs cleanup when SIGINT, SIGTERM or SIGHUP comes, before the signal ends floe, until
-// the returned remove. Cleanups run side by side, so a write stuck on a terminal paused with
-// Ctrl-S holds back no other; the signal waits for all of them. remove may be called from one.
+// OnSignal runs cleanup when SIGINT, SIGTERM, SIGHUP or SIGQUIT comes, before the signal ends
+// floe, until the returned remove. Cleanups run side by side, so a write stuck on a terminal
+// paused with Ctrl-S holds back no other; the signal waits for all of them. remove may be called
+// from one.
 func OnSignal(cleanup func()) (remove func()) {
 	mu.Lock()
 	defer mu.Unlock()
