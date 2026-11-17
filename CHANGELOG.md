@@ -4,6 +4,8 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
 ### Added
 
 - A new Mac no longer needs Migration Assistant. `floe init` finds the backups already in iCloud and offers to replace the old Mac. Every question comes first, then the run needs no one: it restores the files and the apps' data and settings, reinstalls the apps in the same pass (Homebrew, App Store, apps no installer brings back, from a copy the backup keeps), applies the Apple settings the old Mac had changed, and continues its history. It leaves this Mac's session alone (keychain, Apple Account, Mail, Messages, what macOS creates), shows its progress on one live screen, resumes where it stopped when interrupted, and ends with the actions left, each one floe can run.
@@ -14,6 +16,7 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 - Renaming a Mac no longer starts a new backup: the config records its backup folder and the Mac it belongs to.
 - A config copied to another Mac, by Migration Assistant for instance, stops backing up and says `This floe config comes from another Mac — run floe init`, instead of writing into the old Mac's backup. `floe doctor` reports it too.
 - `floe init` never sets up a new backup inside a folder that already exists: it uses `<name>-2`.
+- The old Mac's last snapshot is kept for a year after a replace, whatever the retention, so its exact state stays restorable.
 - New default excludes for what macOS and app launchers rebuild on their own, which also changes every day: `~/Library/Metadata`, `~/Library/Daemon Containers`, `~/Library/IntelligencePlatform`, `~/Library/DuetExpertCenter`, `~/Library/Trial`, `~/Library/Suggestions`, `~/Library/Photos/Libraries/Syndication.photoslibrary`, every sandboxed app's `Library/Caches`, Steam's installed games (`steamapps/common`), Discord's app builds (`discord/app-*`), downloaded test browsers (`Google/Chrome for Testing`, `Google/Chrome-headless`), VS Code's cached extension packages (`Code/CachedExtensionVSIXs`) and the aerial wallpapers (`com.apple.wallpaper/aerials`), plus `.*.floe-restore`, the temporary copy of an app a replace was restoring. A new install gets them from `floe init`; an existing config keeps its list, so add the ones you want to its `exclude` (paths under `~/Library/Application Support` for the app ones).
 
 ### Fixed
@@ -75,6 +78,10 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 - Notifications: failures and low quota immediately, weekly health digest, never a per-backup ping.
 - Distribution: `install.sh` one-liner, GitHub Releases (darwin arm64/amd64) and `go install`.
 
+[Unreleased]: https://github.com/Jszigeti/floe/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Jszigeti/floe/releases/tag/v0.2.0
+[0.1.5]: https://github.com/Jszigeti/floe/releases/tag/v0.1.5
+[0.1.4]: https://github.com/Jszigeti/floe/releases/tag/v0.1.4
 [0.1.3]: https://github.com/Jszigeti/floe/releases/tag/v0.1.3
 [0.1.2]: https://github.com/Jszigeti/floe/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Jszigeti/floe/releases/tag/v0.1.1
