@@ -45,41 +45,41 @@ func TestScreenRestoreLine(t *testing.T) {
 			t.Errorf("after %v with %+v:\n got %q\nwant %q", step.wait, step.st, got, step.want)
 		}
 	}
-	if got := s.lines()[2]; got != "  1h 4m elapsed, on power, sleep blocked" {
-		t.Errorf("clock line = %q", got)
+	if got, want := s.lines()[2], "  1h 4m elapsed, on power, sleep blocked"; got != want {
+		t.Errorf("clock line = %q, want %q", got, want)
 	}
 	seen.RestoreEnded = true
-	if got := s.lines()[0]; got != "  Restore done, 4.4 GB" {
-		t.Errorf("ended restore line = %q", got)
+	if got, want := s.lines()[0], "  Restore done, 4.4 GB"; got != want {
+		t.Errorf("ended restore line = %q, want %q", got, want)
 	}
 }
 
 func TestScreenAppsLine(t *testing.T) {
 	s, seen, wait, _ := testScreen(true)
-	if got := s.lines()[1]; got != "Installing apps" {
-		t.Errorf("before any report = %q", got)
+	if got, want := s.lines()[1], "Installing apps"; got != want {
+		t.Errorf("before any report = %q, want %q", got, want)
 	}
 	seen.Apps = apps.Progress{Total: 31, Current: "Homebrew", Tool: "the Homebrew installer"}
 	seen.AppsLines = 1
-	if got := s.lines()[1]; got != "Installing apps  Homebrew" {
-		t.Errorf("Homebrew line = %q", got)
+	if got, want := s.lines()[1], "Installing apps  Homebrew"; got != want {
+		t.Errorf("Homebrew line = %q, want %q", got, want)
 	}
 	seen.Apps = apps.Progress{Done: 11, At: 12, Total: 31, Current: "Google Chrome", Tool: "brew"}
 	seen.AppsLines = 2
-	if got := s.lines()[1]; got != "Installing apps  12 of 31  Google Chrome" {
-		t.Errorf("entry line = %q", got)
+	if got, want := s.lines()[1], "Installing apps  12 of 31  Google Chrome"; got != want {
+		t.Errorf("entry line = %q, want %q", got, want)
 	}
 	wait(10 * time.Minute)
-	if got := s.lines()[1]; got != "Installing apps  12 of 31  stalled for 10m: brew is waiting" {
-		t.Errorf("stalled line = %q", got)
+	if got, want := s.lines()[1], "Installing apps  12 of 31  stalled for 10m: brew is waiting"; got != want {
+		t.Errorf("stalled line = %q, want %q", got, want)
 	}
 	seen.AppsLines = 3
-	if got := s.lines()[1]; got != "Installing apps  12 of 31  Google Chrome" {
-		t.Errorf("a new line of output must end the stall: %q", got)
+	if got, want := s.lines()[1], "Installing apps  12 of 31  Google Chrome"; got != want {
+		t.Errorf("a new line of output must end the stall: got %q, want %q", got, want)
 	}
 	seen.Apps, seen.AppsEnded = apps.Progress{Done: 31, Total: 31}, true
-	if got := s.lines()[1]; got != "  Apps done, 31 of 31" {
-		t.Errorf("ended apps line = %q", got)
+	if got, want := s.lines()[1], "  Apps done, 31 of 31"; got != want {
+		t.Errorf("ended apps line = %q, want %q", got, want)
 	}
 }
 
@@ -92,16 +92,16 @@ func TestScreenPlainLeavesOutTheClocks(t *testing.T) {
 	wait(10 * time.Minute)
 	seen.Restore.Done = 4e9
 	lines := s.lines()
-	if lines[0] != "Restoring files  50%" || lines[2] != "  on power, sleep blocked" {
-		t.Errorf("plain lines = %q", lines)
+	if want := []string{"Restoring files  50%", "  on power, sleep blocked"}; lines[0] != want[0] || lines[2] != want[1] {
+		t.Errorf("plain lines = %q, want lines 0 and 2 %q", lines, want)
 	}
 	seen.Restore.Done = 4.07e9
-	if got := s.lines()[0]; got != "Restoring files  50%" {
-		t.Errorf("0.07 GB more is no new percent, so no new line: %q", got)
+	if got, want := s.lines()[0], "Restoring files  50%"; got != want {
+		t.Errorf("0.07 GB more is no new percent, so no new line: got %q, want %q", got, want)
 	}
 	seen.Restore.Done = 4.08e9
-	if got := s.lines()[0]; got != "Restoring files  51%" {
-		t.Errorf("next percent = %q", got)
+	if got, want := s.lines()[0], "Restoring files  51%"; got != want {
+		t.Errorf("next percent = %q, want %q", got, want)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestScreenTreeWalkIsNoStall(t *testing.T) {
 	for total := int64(1e9); total <= 5e9; total += 1e9 {
 		seen.Restore = restic.RestoreStatus{Total: total}
 		if got := s.lines()[0]; strings.Contains(got, "stalled") {
-			t.Fatalf("a growing total is no stall: %q", got)
+			t.Fatalf("a growing total is no stall: got %q, want no \"stalled\"", got)
 		}
 		wait(2 * time.Minute)
 	}
@@ -146,17 +146,17 @@ func TestScreenRestoreStepsAfterTheHome(t *testing.T) {
 	s.lines()
 	seen.HomeDone = true
 	wait(10 * time.Minute)
-	if got := s.lines()[0]; got != "Restoring app settings" {
-		t.Errorf("preferences line = %q", got)
+	if got, want := s.lines()[0], "Restoring app settings"; got != want {
+		t.Errorf("preferences line = %q, want %q", got, want)
 	}
 	seen.Bundle, seen.Bundles = 3, 7
 	wait(10 * time.Minute)
-	if got := s.lines()[0]; got != "Restoring apps from the backup  3 of 7" {
-		t.Errorf("bundles line = %q", got)
+	if got, want := s.lines()[0], "Restoring apps from the backup  3 of 7"; got != want {
+		t.Errorf("bundles line = %q, want %q", got, want)
 	}
 	seen.RestoreEnded = true
-	if got := s.lines()[0]; got != "  Restore done, 8.0 GB" {
-		t.Errorf("ended restore line = %q", got)
+	if got, want := s.lines()[0], "  Restore done, 8.0 GB"; got != want {
+		t.Errorf("ended restore line = %q, want %q", got, want)
 	}
 }
 
@@ -168,13 +168,13 @@ func TestScreenAppsDownloadIsNoStall(t *testing.T) {
 	for range 4 {
 		wait(5 * time.Minute)
 		*downloaded += 1e8
-		if got := s.lines()[1]; got != "Installing apps  4 of 9  Xcode" {
-			t.Fatalf("a growing download is no stall: %q", got)
+		if got, want := s.lines()[1], "Installing apps  4 of 9  Xcode"; got != want {
+			t.Fatalf("a growing download is no stall: got %q, want %q", got, want)
 		}
 	}
 	wait(10 * time.Minute)
-	if got := s.lines()[1]; got != "Installing apps  4 of 9  stalled for 10m: brew is waiting" {
-		t.Errorf("neither a line nor a byte for 10m = %q", got)
+	if got, want := s.lines()[1], "Installing apps  4 of 9  stalled for 10m: brew is waiting"; got != want {
+		t.Errorf("neither a line nor a byte for 10m = %q, want %q", got, want)
 	}
 }
 
@@ -184,8 +184,8 @@ func TestScreenMasShowsNoStall(t *testing.T) {
 	seen.Apps = apps.Progress{Done: 3, At: 4, Total: 9, Current: "497799835", Tool: "mas"}
 	s.lines()
 	wait(25 * time.Minute)
-	if got := s.lines()[1]; got != "Installing apps  4 of 9  497799835" {
-		t.Errorf("mas line = %q", got)
+	if got, want := s.lines()[1], "Installing apps  4 of 9  497799835"; got != want {
+		t.Errorf("mas line = %q, want %q", got, want)
 	}
 }
 
