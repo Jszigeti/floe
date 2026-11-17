@@ -145,6 +145,8 @@ func TestE2E(t *testing.T) {
 	notifyLog := filepath.Join(dataDir, "notifications.log")
 	setupShims(t, shimDir, store, notifyLog)
 
+	// The runner's own apps, several Xcodes on CI, would go into every backup's apps snapshot.
+	appsDir := t.TempDir()
 	run := func(t *testing.T, stdin string, args ...string) (string, int) {
 		t.Helper()
 		cmd := exec.Command(binPath, args...)
@@ -152,6 +154,7 @@ func TestE2E(t *testing.T) {
 		cmd.Env = []string{
 			"HOME=" + home,
 			"PATH=" + shimDir + ":" + os.Getenv("PATH"),
+			"FLOE_APPS=" + appsDir,
 		}
 		if stdin != "" {
 			cmd.Stdin = strings.NewReader(stdin)

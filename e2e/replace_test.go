@@ -53,7 +53,8 @@ func runFloe(t *testing.T, home, shims, stdin string, args ...string) (string, i
 	t.Helper()
 	cmd := exec.Command(binPath, args...)
 	cmd.Dir = home
-	cmd.Env = []string{"HOME=" + home, "PATH=" + shims + ":" + os.Getenv("PATH")}
+	// An empty apps folder keeps the runner's own apps out of both Macs' backups.
+	cmd.Env = []string{"HOME=" + home, "PATH=" + shims + ":" + os.Getenv("PATH"), "FLOE_APPS=" + filepath.Join(home, "no-apps")}
 	cmd.Stdin = strings.NewReader(stdin)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out

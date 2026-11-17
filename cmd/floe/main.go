@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +25,8 @@ func main() {
 	if err := icloud.AllowDatalessDownloads(); err != nil {
 		fmt.Fprintln(os.Stderr, "floe: cannot enable iCloud downloads:", err)
 	}
-	roots := []string{"/Applications"}
+	// FLOE_APPS lets the end-to-end tests scan a folder of their own instead of this Mac's apps.
+	roots := []string{cmp.Or(os.Getenv("FLOE_APPS"), "/Applications")}
 	if home, err := os.UserHomeDir(); err == nil {
 		roots = append(roots, filepath.Join(home, "Applications"))
 	}
