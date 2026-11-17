@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/spf13/cobra"
 )
 
@@ -26,7 +27,7 @@ func newRestoreCmd(d Deps) *cobra.Command {
 			id := args[0]
 			// restic's own "latest" could be the apps snapshot: latest means the newest home backup.
 			if id == "latest" {
-				snap, err := client.Latest(cmd.Context(), "home")
+				snap, err := client.Latest(cmd.Context(), restic.TagHome)
 				if err != nil {
 					return err
 				}

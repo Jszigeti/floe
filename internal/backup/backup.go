@@ -141,7 +141,7 @@ func Run(ctx context.Context, d Deps) error {
 		excludes = append(excludes, caskCache) // refreshed weekly and never restored
 	}
 	incomplete := false
-	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, restic.BackupOptions{Excludes: excludes, Tags: []string{"home"}}); err != nil {
+	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, restic.BackupOptions{Excludes: excludes, Tags: []string{restic.TagHome}}); err != nil {
 		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would
 		// be crying wolf, so the notice is weekly.
 		if errors.Is(err, restic.ErrIncomplete) {
@@ -218,7 +218,7 @@ func backupApps(ctx context.Context, d Deps, apps []inventory.App) {
 	if len(paths) == 0 {
 		return
 	}
-	err := d.Client.Backup(ctx, paths, restic.BackupOptions{Tags: []string{"apps"}})
+	err := d.Client.Backup(ctx, paths, restic.BackupOptions{Tags: []string{restic.TagApps}})
 	var ie *restic.IncompleteError
 	switch {
 	case errors.As(err, &ie):
@@ -251,8 +251,8 @@ func dropReplacedTag(ctx context.Context, d Deps) {
 		return
 	}
 	for _, s := range snaps {
-		if slices.Contains(s.Tags, "replaced") && d.Now().Sub(s.Time) > replacedKept {
-			if _, err := d.Client.Tag(ctx, s.ShortID, nil, []string{"replaced"}); err != nil {
+		if slices.Contains(s.Tags, restic.TagReplaced) && d.Now().Sub(s.Time) > replacedKept {
+			if _, err := d.Client.Tag(ctx, s.ShortID, nil, []string{restic.TagReplaced}); err != nil {
 				d.Log("untagging replaced snapshot %s failed: %v", s.ShortID, err)
 			}
 		}
@@ -270,7 +270,7 @@ func migrateTags(ctx context.Context, d Deps) {
 	if _, err := os.Stat(stamp); err == nil {
 		return
 	}
-	if err := d.Client.TagUntagged(ctx, "home"); err != nil {
+	if err := d.Client.TagUntagged(ctx, restic.TagHome); err != nil {
 		d.Log("tagging older snapshots failed, retrying next run: %v", err)
 		return
 	}

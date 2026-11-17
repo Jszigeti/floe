@@ -144,7 +144,7 @@ func (r replaceRun) run(ctx context.Context, p prompter) error {
 	// from before kinds has no tag: home keeps it a home snapshot once it carries replaced.
 	st := r.state
 	var err error
-	if st.SnapshotID, err = r.client.Tag(ctx, st.SnapshotID, []string{"home", "replaced"}, nil); err != nil {
+	if st.SnapshotID, err = r.client.Tag(ctx, st.SnapshotID, []string{restic.TagHome, restic.TagReplaced}, nil); err != nil {
 		return fmt.Errorf("keeping the replaced snapshot for a year: %w", err)
 	}
 	st.Restoring = true

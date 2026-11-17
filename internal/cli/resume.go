@@ -32,11 +32,11 @@ func pinSnapshot(ctx context.Context, client *restic.Client, b foundBackup, dest
 	if resume != nil && resume.SnapshotID != "" {
 		return *resume, nil
 	}
-	snap, err := client.Latest(ctx, "home")
+	snap, err := client.Latest(ctx, restic.TagHome)
 	if err != nil {
 		return replace.State{}, err
 	}
-	appsSnap, err := client.Latest(ctx, "apps")
+	appsSnap, err := client.Latest(ctx, restic.TagApps)
 	if err != nil && !errors.Is(err, restic.ErrNoSnapshot) {
 		return replace.State{}, err
 	}

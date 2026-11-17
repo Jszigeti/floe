@@ -10,6 +10,13 @@ import (
 	"github.com/Jszigeti/floe/internal/config"
 )
 
+// The tags that say a snapshot's kind.
+const (
+	TagHome     = "home"     // the backed-up folders of the home
+	TagApps     = "apps"     // the app bundles a replace restores
+	TagReplaced = "replaced" // the last home snapshot of a replaced Mac, kept out of retention for a while
+)
+
 type Snapshot struct {
 	Time    time.Time `json:"time"`
 	ShortID string    `json:"short_id"`
@@ -32,7 +39,7 @@ func (c *Client) Snapshots(ctx context.Context) ([]Snapshot, error) {
 // Forget groups snapshots by tags only: a repository belongs to one Mac at a time, so
 // snapshots taken under an older name age out with the rest, while each kind ages on its own.
 func (c *Client) Forget(ctx context.Context, r config.Retention) error {
-	_, err := c.run(ctx, "forget", "--prune", "--group-by", "tags", "--keep-tag", "replaced",
+	_, err := c.run(ctx, "forget", "--prune", "--group-by", "tags", "--keep-tag", TagReplaced,
 		"--keep-daily", strconv.Itoa(r.Daily),
 		"--keep-weekly", strconv.Itoa(r.Weekly),
 		"--keep-monthly", strconv.Itoa(r.Monthly))

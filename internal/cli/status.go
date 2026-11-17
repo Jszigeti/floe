@@ -24,7 +24,7 @@ func newStatusCmd(d Deps) *cobra.Command {
 				return err
 			}
 			// The apps snapshot is not a backup of the home folder: never count or show it as one.
-			snaps = slices.DeleteFunc(snaps, func(s restic.Snapshot) bool { return !s.Is("home") })
+			snaps = slices.DeleteFunc(snaps, func(s restic.Snapshot) bool { return !s.Is(restic.TagHome) })
 			plural := "s"
 			if len(snaps) == 1 {
 				plural = ""
