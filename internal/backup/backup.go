@@ -102,20 +102,12 @@ type Deps struct {
 	CaskURL   string   // Homebrew's cask list, empty in tests
 }
 
-func statePath(name string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local/state/floe", name), nil
-}
-
 func Run(ctx context.Context, d Deps) error {
 	if err := runHooks(ctx, d, d.Cfg.Hooks.Pre, "pre-hook"); err != nil {
 		return err
 	}
 
-	caskCache, _ := statePath("cask.json") // no home: no manifest, nothing to leave out
+	caskCache, _ := digest.StatePath("cask.json") // no home: no manifest, nothing to leave out
 	apps := dumpManifest(ctx, d, caskCache)
 
 	onICloud := icloud.IsICloudPath(d.Cfg.Destination)
@@ -275,7 +267,7 @@ func dropReplacedTag(ctx context.Context, d Deps) {
 func migrateTags(ctx context.Context, d Deps) {
 	// One stamp per repository: a Mac that switches to another backup must migrate that one too.
 	name := "tags-migrated-" + fmt.Sprintf("%x", sha256.Sum256([]byte(d.Client.Repo)))[:12]
-	stamp, err := statePath(name)
+	stamp, err := digest.StatePath(name)
 	if err != nil {
 		return
 	}

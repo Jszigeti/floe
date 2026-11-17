@@ -8,7 +8,8 @@ import (
 
 const interval = 7 * 24 * time.Hour
 
-func stampPath(name string) (string, error) {
+// StatePath is where floe keeps the state file named name, notice stamps included.
+func StatePath(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -19,7 +20,7 @@ func stampPath(name string) (string, error) {
 // NoticeDue reports whether the notice named name has not fired within the
 // last 7 days.
 func NoticeDue(name string, now time.Time) bool {
-	p, err := stampPath(name)
+	p, err := StatePath(name)
 	if err != nil {
 		return false
 	}
@@ -36,7 +37,7 @@ func NoticeDue(name string, now time.Time) bool {
 
 // MarkNotice records that the notice named name fired at now.
 func MarkNotice(name string, now time.Time) error {
-	p, err := stampPath(name)
+	p, err := StatePath(name)
 	if err != nil {
 		return err
 	}
