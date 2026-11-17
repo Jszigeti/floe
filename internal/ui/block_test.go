@@ -39,7 +39,8 @@ func fixedNow() time.Time { return time.Unix(0, 0) }
 
 func TestBlockPlainPrintsChangesOnly(t *testing.T) {
 	var out bytes.Buffer
-	b := NewBlock(&out, false, fixedNow)
+	b := NewBlock(&out, false)
+	b.now = fixedNow
 	b.Start(context.Background())
 	b.Set(0, "Restoring files")
 	b.Set(0, "Restoring files")
@@ -61,7 +62,8 @@ func TestBlockPlainPrintsChangesOnly(t *testing.T) {
 
 func TestBlockLiveFrameIsOneWrite(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Set(1, "Installing apps")
 	b.Set(2, "  1m elapsed")
@@ -86,7 +88,8 @@ func TestBlockLiveFrameIsOneWrite(t *testing.T) {
 
 func TestBlockDoneLandsAboveTheLiveLines(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Start(context.Background())
 	b.Done("Found the backup", time.Minute+12*time.Second)
@@ -106,7 +109,8 @@ func TestBlockDoneLandsAboveTheLiveLines(t *testing.T) {
 
 func TestBlockCutsToWidth(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.width = func() int { return 12 }
 	b.Set(0, "Restoring files 12.4 of 21.4 GB")
 	b.Stop()
@@ -123,7 +127,8 @@ func TestBlockCutsToWidth(t *testing.T) {
 
 func TestBlockStopShowsCursor(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Start(context.Background())
 	b.Stop()
@@ -152,13 +157,16 @@ func TestBlockSignalShowsCursor(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { onSignal = on })
-	plain := NewBlock(&bytes.Buffer{}, false, fixedNow)
+	plain := NewBlock(&bytes.Buffer{}, false)
+	plain.now = fixedNow
 	plain.Start(context.Background())
 	if cleanup != nil {
 		t.Fatal("a plain block hides no cursor: nothing to show on a signal")
 	}
 
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Start(context.Background())
 	if cleanup == nil {
@@ -179,7 +187,8 @@ func TestBlockSignalShowsCursor(t *testing.T) {
 
 func TestBlockContextCancelShowsCursor(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	ctx, cancel := context.WithCancel(context.Background())
 	b.Start(ctx)
@@ -201,7 +210,8 @@ func TestBlockRedrawsOnTick(t *testing.T) {
 	now := time.Unix(0, 0)
 	var mu sync.Mutex
 	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
-	b := NewBlock(rec, true, clock)
+	b := NewBlock(rec, true)
+	b.now = clock
 	b.Set(0, "Restoring files")
 	b.Start(context.Background())
 	defer b.Stop()
@@ -220,7 +230,8 @@ func TestBlockRedrawsOnTick(t *testing.T) {
 
 func TestBlockPauseClearsAndResumes(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Set(1, "Installing apps")
 	b.Start(context.Background())
@@ -254,7 +265,8 @@ func TestBlockPauseClearsAndResumes(t *testing.T) {
 // A line set to empty leaves the screen, so a summary can follow the block without it.
 func TestBlockEmptyLineIsNotDrawn(t *testing.T) {
 	rec := &recorder{}
-	b := NewBlock(rec, true, fixedNow)
+	b := NewBlock(rec, true)
+	b.now = fixedNow
 	b.Set(0, "Restoring files")
 	b.Set(1, "Installing apps")
 	b.Start(context.Background())
@@ -268,7 +280,8 @@ func TestBlockEmptyLineIsNotDrawn(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	plain := NewBlock(&out, false, fixedNow)
+	plain := NewBlock(&out, false)
+	plain.now = fixedNow
 	plain.Set(0, "Restoring files")
 	plain.Set(0, "")
 	if out.String() != "Restoring files\n" {

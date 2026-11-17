@@ -191,7 +191,7 @@ func TestScreenMasShowsNoStall(t *testing.T) {
 
 func TestScreenFollowsUntilStopped(t *testing.T) {
 	var out bytes.Buffer
-	block := ui.NewBlock(&out, false, time.Now)
+	block := ui.NewBlock(&out, false)
 	s := newScreen(block, func() replace.Progress { return replace.Progress{} }, func() int64 { return 0 }, false, "on power", time.Now)
 	s.follow(context.Background())()
 
@@ -202,7 +202,7 @@ func TestScreenFollowsUntilStopped(t *testing.T) {
 
 func TestPausingHandsTheTerminalOver(t *testing.T) {
 	var out bytes.Buffer
-	block := ui.NewBlock(&out, true, time.Now)
+	block := ui.NewBlock(&out, true)
 	block.Set(0, "Restoring files")
 	var during []string
 	f := &run.Fake{Handler: func(run.Cmd) (string, error) {

@@ -27,8 +27,19 @@ func Width(f *os.File) int {
 	return int(ws.Col)
 }
 
+// ioctl runs through SyscallConn, since f.Fd() would switch f to blocking mode for good.
 func ioctl(f *os.File, req uintptr, arg unsafe.Pointer) error {
-	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), req, uintptr(arg)); errno != 0 {
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var errno syscall.Errno
+	if err := conn.Control(func(fd uintptr) {
+		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, fd, req, uintptr(arg))
+	}); err != nil {
+		return err
+	}
+	if errno != 0 {
 		return errno
 	}
 	return nil

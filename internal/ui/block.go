@@ -41,20 +41,19 @@ type Block struct {
 	paused  bool
 	started bool
 	ended   bool
-	unwatch func() // drops the signal cleanup
+	unwatch func()             // drops the signal cleanup
+	cancel  context.CancelFunc // stops the redraw loop
 
-	halt     sync.Once
-	stop     chan struct{}
 	finished chan struct{}
 }
 
-// NewBlock writes to w; live false prints plain lines. now drives the spinner frame.
-func NewBlock(w io.Writer, live bool, now func() time.Time) *Block {
+// NewBlock writes to w; live false prints plain lines.
+func NewBlock(w io.Writer, live bool) *Block {
 	width := func() int { return 80 }
 	if f, ok := w.(*os.File); ok {
 		width = func() int { return Width(f) }
 	}
-	return &Block{w: w, live: live, now: now, width: width, stop: make(chan struct{}), finished: make(chan struct{})}
+	return &Block{w: w, live: live, now: time.Now, width: width, finished: make(chan struct{})}
 }
 
 // Done prints a finished step, with its duration when d is not zero, above the live lines.
@@ -130,6 +129,7 @@ func (b *Block) Start(ctx context.Context) {
 		b.write(showCursor)
 	})
 	b.write(hideCursor + b.frame())
+	ctx, b.cancel = context.WithCancel(ctx)
 	go b.loop(ctx)
 }
 
@@ -139,13 +139,13 @@ func (b *Block) Stop() {
 		return
 	}
 	b.mu.Lock()
-	started := b.started
+	started, cancel := b.started, b.cancel
 	b.mu.Unlock()
 	if !started {
 		b.end()
 		return
 	}
-	b.halt.Do(func() { close(b.stop) })
+	cancel()
 	<-b.finished
 }
 
@@ -156,9 +156,6 @@ func (b *Block) loop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			b.end()
-			return
-		case <-b.stop:
 			b.end()
 			return
 		case <-tick.C:
