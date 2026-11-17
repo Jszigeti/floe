@@ -65,9 +65,9 @@ func trialRun(t *testing.T) (Result, OldMac) {
 			StoreFailed: []string{"1500855883", "361285480", "361304891", "361309726", "1491326665", "1451685025"},
 			Missing: []string{"Capture d’écran 2026-10-16 à 23.23.07.png", "Keynote Creator Studio.app", "Numbers Creator Studio.app",
 				"Pages Creator Studio.app", "Python 3.12", "Tempus Stopwatch.app", "Voicebox.app", "WireGuard.app", "Zaap.app", "logioptionsplus.app"},
-			Commands: []string{
-				"mas install 1500855883 361285480 361304891 361309726 1491326665 1451685025",
-				"brew bundle install --file /Users/admin/.local/state/floe/recipe/Brewfile.vscode",
+			Leftovers: []apps.Leftover{
+				apps.StoreLeftover([]string{"1500855883", "361285480", "361304891", "361309726", "1491326665", "1451685025"}, true),
+				{Kind: apps.LeftExtensions, Command: "brew bundle install --file /Users/admin/.local/state/floe/recipe/Brewfile.vscode"},
 			},
 			FromHomebrew: 14,
 		},
@@ -197,8 +197,8 @@ func TestActionsWithoutHomebrew(t *testing.T) {
 
 func TestActionsOnlyWhatIsLeft(t *testing.T) {
 	res := Result{Apps: apps.Report{
-		Missing:  []string{"Notes.txt", "Utilities", "Keynote.app", "Zed.app", "Pages.app"},
-		Commands: []string{"mas install 1", "mas install 1"},
+		Missing:   []string{"Notes.txt", "Utilities", "Keynote.app", "Zed.app", "Pages.app"},
+		Leftovers: []apps.Leftover{apps.StoreLeftover([]string{"1"}, true), apps.StoreLeftover([]string{"1"}, true)},
 	}}
 	old := OldMac{Apps: []inventory.App{
 		{Name: "Keynote", Source: inventory.SourceAppStore, StoreID: "1"},
@@ -230,7 +230,7 @@ func TestActionsKeepCaskAppsNoStepBringsBack(t *testing.T) {
 	res := Result{Apps: apps.Report{
 		BrewFailed: []string{"Arc"},
 		Missing:    []string{"Arc.app", "Docker Desktop.app"},
-		Commands:   []string{"brew bundle install --file /r/Brewfile.apps"},
+		Leftovers:  []apps.Leftover{{Kind: apps.LeftBrewfile, Command: "brew bundle install --file /r/Brewfile.apps"}},
 	}}
 	old := OldMac{
 		Apps: []inventory.App{
@@ -264,7 +264,10 @@ func TestActionsLeaveTheExtensionsOutOfTheBrewfileCover(t *testing.T) {
 		ExtensionsFailed: []string{"ms-python.python"},
 		Notes:            []string{"brew bundle failed on Brewfile.apps: curl error"},
 		Missing:          []string{"Arc.app"},
-		Commands:         []string{"brew bundle install --file /r/Brewfile.apps", "brew bundle install --file /r/Brewfile.vscode"},
+		Leftovers: []apps.Leftover{
+			{Kind: apps.LeftBrewfile, Command: "brew bundle install --file /r/Brewfile.apps"},
+			{Kind: apps.LeftExtensions, Command: "brew bundle install --file /r/Brewfile.vscode"},
+		},
 	}}
 	old := OldMac{Apps: []inventory.App{{Name: "Arc", Source: inventory.SourceCask, Cask: "arc"}}}
 

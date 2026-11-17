@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Jszigeti/floe/internal/inventory"
+	"github.com/Jszigeti/floe/internal/manifest"
 )
 
 // caskLineRe reads the token of a Brewfile `cask "token"` line.
@@ -31,8 +32,8 @@ type Plan struct {
 // fail until VS Code is installed, so they go last. The filtered Brewfiles are written beside
 // the recipe's own, which stays whole for a resumed run.
 func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
-	p := Plan{Expected: listedApps(filepath.Join(recipeDir, "applications.txt"))}
-	data, err := os.ReadFile(filepath.Join(recipeDir, "Brewfile"))
+	p := Plan{Expected: listedApps(filepath.Join(recipeDir, manifest.ApplicationsFile))}
+	data, err := os.ReadFile(filepath.Join(recipeDir, manifest.BrewFile))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Plan{}, err
 	}
@@ -49,10 +50,10 @@ func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
 			}
 		}
 	}
-	if p.Brewfile, err = writeLines(filepath.Join(recipeDir, "Brewfile.apps"), main); err != nil {
+	if p.Brewfile, err = writeLines(filepath.Join(recipeDir, manifest.BrewFile+".apps"), main); err != nil {
 		return Plan{}, err
 	}
-	if p.VSCode, err = writeLines(filepath.Join(recipeDir, "Brewfile.vscode"), vscode); err != nil {
+	if p.VSCode, err = writeLines(filepath.Join(recipeDir, manifest.BrewFile+".vscode"), vscode); err != nil {
 		return Plan{}, err
 	}
 	for _, a := range list {
@@ -82,10 +83,10 @@ func (p Plan) NeedsAdmin(brewDirs []string) bool {
 // applications.txt entries Homebrew has a cask for, and the mas.txt apps, named after their
 // applications.txt entry so the summary knows which bundles they bring back.
 func ListedApps(recipeDir string, casks inventory.CaskIndex) []inventory.App {
-	files := listedApps(filepath.Join(recipeDir, "applications.txt"))
+	files := listedApps(filepath.Join(recipeDir, manifest.ApplicationsFile))
 	var store []inventory.App
 	fromStore := map[string]bool{}
-	masList, _ := os.ReadFile(filepath.Join(recipeDir, "mas.txt")) // a backup without mas.txt has no App Store app
+	masList, _ := os.ReadFile(filepath.Join(recipeDir, manifest.MasFile)) // a backup without mas.txt has no App Store app
 	for _, e := range inventory.ParseMasList(string(masList)) {
 		name := e.Name
 		if file := storeFile(files, e.Name); file != "" {

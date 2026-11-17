@@ -185,7 +185,7 @@ func (r replaceRun) run(ctx context.Context, p prompter) error {
 	stopAwake()
 	// The run never reached mas, which may not be on this Mac yet.
 	if len(r.skipped) > 0 {
-		res.Apps.Commands = append(res.Apps.Commands, "brew install mas && mas install "+strings.Join(r.skipped, " "))
+		res.Apps.Leftovers = append(res.Apps.Leftovers, apps.StoreLeftover(r.skipped, false))
 	}
 	actions := replace.Actions(res, oldMac(ctx, r.runner, r.recipe, r.list))
 	report, err := replace.ReportPath()

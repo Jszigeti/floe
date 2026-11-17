@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -68,8 +69,8 @@ func TestInstallRunsBrewThenCasksThenStoreThenVSCode(t *testing.T) {
 	if !slices.Equal(order, want) {
 		t.Fatalf("calls = %q, want %q", order, want)
 	}
-	if len(rep.Commands) != 0 || len(rep.BrewFailed) != 0 || len(rep.StoreFailed) != 0 {
-		t.Fatalf("commands = %q, brew failed = %q, store failed = %q, want none of them", rep.Commands, rep.BrewFailed, rep.StoreFailed)
+	if len(rep.Leftovers) != 0 || len(rep.BrewFailed) != 0 || len(rep.StoreFailed) != 0 {
+		t.Fatalf("leftovers = %+v, brew failed = %q, store failed = %q, want none of them", rep.Leftovers, rep.BrewFailed, rep.StoreFailed)
 	}
 	if rep.FromHomebrew != 2 || rep.FromAppStore != 1 {
 		t.Fatalf("installed %d from Homebrew and %d from the App Store, want arc and zed, jq being no app, then 111", rep.FromHomebrew, rep.FromAppStore)
@@ -151,15 +152,15 @@ func TestInstallSkipsHomebrewWithoutAnAdmin(t *testing.T) {
 	if len(f.Calls) != 0 {
 		t.Fatalf("the Homebrew installer needs an administrator, nothing can run: %+v", f.Calls)
 	}
-	want := []string{
-		HomebrewInstall,
-		"brew bundle install --file " + p.Brewfile,
-		"brew install --cask zed",
-		"brew install mas && mas install 111",
-		"brew bundle install --file " + p.VSCode,
+	want := []Leftover{
+		{Kind: LeftHomebrew, Command: HomebrewInstall},
+		{Kind: LeftBrewfile, Command: "brew bundle install --file " + p.Brewfile},
+		{Kind: LeftCasks, Items: []string{"zed"}, Command: "brew install --cask zed"},
+		{Kind: LeftAppStore, Items: []string{"111"}, Command: "brew install mas && mas install 111"},
+		{Kind: LeftExtensions, Command: "brew bundle install --file " + p.VSCode},
 	}
-	if !slices.Equal(rep.Commands, want) || !slices.Equal(rep.Missing, []string{"Zed.app"}) {
-		t.Fatalf("commands = %q, missing = %q, want %q and %q", rep.Commands, rep.Missing, want, []string{"Zed.app"})
+	if !reflect.DeepEqual(rep.Leftovers, want) || !slices.Equal(rep.Missing, []string{"Zed.app"}) {
+		t.Fatalf("leftovers = %+v, missing = %q, want %+v and %q", rep.Leftovers, rep.Missing, want, []string{"Zed.app"})
 	}
 	if rep.Homebrew != "floe had no administrator password" || len(rep.Notes) != 0 {
 		t.Fatalf("Homebrew = %q, notes = %q, want the reason said once", rep.Homebrew, rep.Notes)
@@ -198,11 +199,14 @@ func TestInstallJudgesHomebrewByTheBrewItLeaves(t *testing.T) {
 			rep := Install(context.Background(), d, Plan{Casks: []string{"zed"}}, nil)
 
 			if tc.leaveBrew {
-				if len(f.Calls) != 2 || len(rep.Commands) != 0 {
+				if len(f.Calls) != 2 || len(rep.Leftovers) != 0 {
 					t.Fatalf("brew is there, the casks must use it: calls %q, report %+v", callArgs(f), rep)
 				}
-			} else if !slices.Equal(rep.Commands, []string{HomebrewInstall, "brew install --cask zed"}) {
-				t.Fatalf("commands = %q", rep.Commands)
+			} else if want := []Leftover{
+				{Kind: LeftHomebrew, Command: HomebrewInstall},
+				{Kind: LeftCasks, Items: []string{"zed"}, Command: "brew install --cask zed"},
+			}; !reflect.DeepEqual(rep.Leftovers, want) {
+				t.Fatalf("leftovers = %+v, want %+v", rep.Leftovers, want)
 			}
 			if rep.Homebrew != tc.why || len(rep.Notes) != 0 {
 				t.Fatalf("Homebrew = %q, notes = %q, want %q", rep.Homebrew, rep.Notes, tc.why)
@@ -308,7 +312,7 @@ func TestInstallGivesUpOnAStuckAppStoreApp(t *testing.T) {
 		t.Fatal("a stuck mas must not hold the install")
 	}
 
-	if !slices.Equal(rep.StoreFailed, []string{"111"}) || !slices.Equal(rep.Commands, []string{"mas install 111"}) {
+	if !slices.Equal(rep.StoreFailed, []string{"111"}) || !reflect.DeepEqual(rep.Leftovers, []Leftover{{Kind: LeftAppStore, Items: []string{"111"}, Command: "mas install 111"}}) {
 		t.Fatalf("report = %+v, want the stuck app left to install later", rep)
 	}
 	if !f.CalledWith("mas", "install", "222") {
@@ -363,9 +367,13 @@ func TestInstallParsesHomebrew7Failures(t *testing.T) {
 	if !slices.Equal(rep.BrewFailed, wantBrew) || !slices.Equal(rep.StoreFailed, wantStore) {
 		t.Fatalf("failed = %q and %q, want %q and %q", rep.BrewFailed, rep.StoreFailed, wantBrew, wantStore)
 	}
-	want := []string{"brew bundle install --file " + p.Brewfile, "brew install --cask arc", "mas install 222"}
-	if !slices.Equal(rep.Commands, want) {
-		t.Fatalf("commands = %q, want %q", rep.Commands, want)
+	want := []Leftover{
+		{Kind: LeftBrewfile, Command: "brew bundle install --file " + p.Brewfile},
+		{Kind: LeftCasks, Items: []string{"arc"}, Command: "brew install --cask arc"},
+		{Kind: LeftAppStore, Items: []string{"222"}, Command: "mas install 222"},
+	}
+	if !reflect.DeepEqual(rep.Leftovers, want) {
+		t.Fatalf("leftovers = %+v, want %+v", rep.Leftovers, want)
 	}
 	if rep.FromHomebrew != 2 || rep.FromAppStore != 1 {
 		t.Fatalf("installed %d from Homebrew and %d from the App Store, want rectangle and zed, then 111", rep.FromHomebrew, rep.FromAppStore)

@@ -49,10 +49,10 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 	if brew == "" && (p.Brewfile != "" || p.VSCode != "" || len(p.Casks) > 0) {
 		brew = rep.homebrew(ctx, d, t)
 	}
-	rep.FromHomebrew, rep.BrewFailed = rep.bundle(ctx, d, t, brew, p.Brewfile, p.BrewfileCasks)
+	rep.FromHomebrew, rep.BrewFailed = rep.bundle(ctx, d, t, brew, LeftBrewfile, p.Brewfile, p.BrewfileCasks)
 	rep.casks(ctx, d, t, brew, p.Casks)
 	rep.store(ctx, d, t, p.StoreIDs)
-	_, rep.ExtensionsFailed = rep.bundle(ctx, d, t, brew, p.VSCode, nil, vscodeEnv(d.AppsRoot)...)
+	_, rep.ExtensionsFailed = rep.bundle(ctx, d, t, brew, LeftExtensions, p.VSCode, nil, vscodeEnv(d.AppsRoot)...)
 	rep.Missing = missingApps(p.Expected, d.AppsRoot)
 	return rep
 }
@@ -62,7 +62,7 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 // installer is not run, since it stops at its first sudo.
 func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	if d.Admin == nil {
-		rep.Commands = append(rep.Commands, HomebrewInstall)
+		rep.Leftovers = append(rep.Leftovers, Leftover{Kind: LeftHomebrew, Command: HomebrewInstall})
 		rep.Homebrew = "floe had no administrator password"
 		return ""
 	}
@@ -72,7 +72,7 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	if brew := FindTool("brew", d.BrewDirs); brew != "" {
 		return brew
 	}
-	rep.Commands = append(rep.Commands, HomebrewInstall)
+	rep.Leftovers = append(rep.Leftovers, Leftover{Kind: LeftHomebrew, Command: HomebrewInstall})
 	// The installer exits 0 when its own download fails, so a missing brew with no error means no network.
 	rep.Homebrew = "its download failed, check the internet connection"
 	if err != nil {
@@ -81,16 +81,16 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	return ""
 }
 
-// bundle installs file's entries and returns how many of its casks, the apps, are in place, and
+// bundle installs file's entries, left as kind when they fail, and returns how many of its casks, the apps, are in place, and
 // the entries that failed: no cask in place when brew bundle failed without naming its failures.
-func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, casks []string, env ...string) (installed int, failed []string) {
+func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew string, kind LeftoverKind, file string, casks []string, env ...string) (installed int, failed []string) {
 	if file == "" {
 		return 0, nil
 	}
 	t.step(entries(file), "", "brew")
-	command := "brew bundle install --file " + file
+	left := Leftover{Kind: kind, Command: "brew bundle install --file " + file}
 	if brew == "" {
-		rep.Commands = append(rep.Commands, command)
+		rep.Leftovers = append(rep.Leftovers, left)
 		t.finish()
 		return 0, nil
 	}
@@ -99,7 +99,7 @@ func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file st
 	if err == nil {
 		return len(casks), nil
 	}
-	rep.Commands = append(rep.Commands, command)
+	rep.Leftovers = append(rep.Leftovers, left)
 	for _, m := range brewFailedRe.FindAllStringSubmatch(stderr(err), -1) {
 		failed = append(failed, strings.TrimSpace(m[1]+m[2]))
 	}
@@ -168,7 +168,7 @@ func (rep *Report) casks(ctx context.Context, d Deps, t *tracker, brew string, c
 		}
 	}
 	if len(left) > 0 {
-		rep.Commands = append(rep.Commands, "brew install --cask "+strings.Join(left, " "))
+		rep.Leftovers = append(rep.Leftovers, Leftover{Kind: LeftCasks, Items: left, Command: "brew install --cask " + strings.Join(left, " ")})
 	}
 }
 
@@ -182,7 +182,7 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 	mas := FindTool("mas", d.BrewDirs)
 	if mas == "" {
 		t.step(len(ids), "", "mas")
-		rep.Commands = append(rep.Commands, "brew install mas && mas install "+strings.Join(ids, " "))
+		rep.Leftovers = append(rep.Leftovers, StoreLeftover(ids, false))
 		t.finish()
 		return
 	}
@@ -200,7 +200,7 @@ func (rep *Report) store(ctx context.Context, d Deps, t *tracker, ids []string) 
 		}
 	}
 	if len(rep.StoreFailed) > 0 {
-		rep.Commands = append(rep.Commands, "mas install "+strings.Join(rep.StoreFailed, " "))
+		rep.Leftovers = append(rep.Leftovers, StoreLeftover(rep.StoreFailed, true))
 	}
 }
 

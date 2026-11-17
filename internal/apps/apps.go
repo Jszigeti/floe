@@ -37,16 +37,43 @@ type Progress struct {
 
 // Report is what Install leaves to the user.
 type Report struct {
-	BrewFailed  []string // Brewfile entries and casks Homebrew could not install
-	StoreFailed []string // App Store ids mas could not install
-	Missing     []string // Expected entries still absent from AppsRoot
-	Commands    []string // commands left, offered as end-of-replace actions and saved in the report
-	Notes       []string // why a step left a command, when no failed entry says it
-	Homebrew    string   // why Homebrew is missing, "" when it is there
+	BrewFailed  []string   // Brewfile entries and casks Homebrew could not install
+	StoreFailed []string   // App Store ids mas could not install
+	Missing     []string   // Expected entries still absent from AppsRoot
+	Leftovers   []Leftover // steps left, offered as end-of-replace actions and saved in the report
+	Notes       []string   // why a step left a command, when no failed entry says it
+	Homebrew    string     // why Homebrew is missing, "" when it is there
 	// VS Code extensions Homebrew could not install, apart since no app comes back with them.
 	ExtensionsFailed []string
 	// Apps installed or already there, per source: casks and App Store ids, not formulae or extensions.
 	FromHomebrew, FromAppStore int
+}
+
+// LeftoverKind is which step of Install is left.
+type LeftoverKind int
+
+const (
+	LeftHomebrew   LeftoverKind = iota + 1 // Homebrew itself
+	LeftBrewfile                           // the Brewfile's apps and tools
+	LeftExtensions                         // the VS Code extensions
+	LeftCasks                              // inventory casks, Items holding their tokens
+	LeftAppStore                           // App Store apps, Items holding their ids
+)
+
+// Leftover is a step Install left, with the shell command that does it.
+type Leftover struct {
+	Kind    LeftoverKind
+	Items   []string // the casks or App Store ids it installs, nil for the other kinds
+	Command string
+}
+
+// StoreLeftover installs the App Store apps ids, and mas first unless masThere.
+func StoreLeftover(ids []string, masThere bool) Leftover {
+	command := "mas install " + strings.Join(ids, " ")
+	if !masThere {
+		command = "brew install mas && " + command
+	}
+	return Leftover{Kind: LeftAppStore, Items: ids, Command: command}
 }
 
 // entries counts what a Brewfile installs: every line but taps, blanks and comments.

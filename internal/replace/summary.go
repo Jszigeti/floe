@@ -69,17 +69,16 @@ func Actions(res Result, old OldMac) []Action {
 	if old.TurnOnDesktopDocuments {
 		add(Action{Label: "Turn on Desktop & Documents in iCloud Drive"})
 	}
-	var commands []string
-	for _, c := range res.Apps.Commands {
-		if !slices.Contains(commands, c) {
-			commands = append(commands, c)
+	var leftovers []apps.Leftover
+	for _, l := range res.Apps.Leftovers {
+		if !slices.ContainsFunc(leftovers, func(seen apps.Leftover) bool { return seen.Command == l.Command }) {
+			leftovers = append(leftovers, l)
 		}
 	}
-	homebrew := slices.Contains(commands, apps.HomebrewInstall)
-	brewfile := slices.ContainsFunc(commands, func(c string) bool {
-		file, ok := strings.CutPrefix(c, "brew bundle install --file ")
-		return ok && !strings.HasSuffix(file, ".vscode")
-	})
+	left := func(kind apps.LeftoverKind) bool {
+		return slices.ContainsFunc(leftovers, func(l apps.Leftover) bool { return l.Kind == kind })
+	}
+	homebrew, brewfile := left(apps.LeftHomebrew), left(apps.LeftBrewfile)
 	if homebrew {
 		add(Action{Label: "Install Homebrew (" + res.Apps.Homebrew + ")", Command: apps.HomebrewInstall})
 	}
@@ -91,28 +90,27 @@ func Actions(res Result, old OldMac) []Action {
 	}
 	store := map[string]bool{}
 	var retried []string // casks a left step installs by name
-	for _, c := range commands {
+	for _, l := range leftovers {
 		runs := func(a Action) {
-			a.Command = c
+			a.Command = l.Command
 			add(a)
 		}
-		file, bundle := strings.CutPrefix(c, "brew bundle install --file ")
-		tokens, cask := strings.CutPrefix(c, "brew install --cask ")
-		_, ids, mas := strings.Cut(c, "mas install ")
-		switch {
-		case bundle && strings.HasSuffix(file, ".vscode"):
+		switch l.Kind {
+		case apps.LeftHomebrew:
+			// Listed first, above, since every other install needs it.
+		case apps.LeftExtensions:
 			runs(Action{Label: "Install the VS Code extensions"})
-		case bundle:
+		case apps.LeftBrewfile:
 			runs(Action{Label: "Install your Homebrew apps and tools"})
-		case cask:
-			retried = append(retried, strings.Fields(tokens)...)
-			names := appNames(old.Apps, strings.Fields(tokens), func(a inventory.App) string { return a.Cask })
+		case apps.LeftCasks:
+			retried = append(retried, l.Items...)
+			names := appNames(old.Apps, l.Items, func(a inventory.App) string { return a.Cask })
 			runs(named("Install %s with Homebrew", names, plural(len(names), "app", "apps")))
-		case mas:
-			for _, id := range strings.Fields(ids) {
+		case apps.LeftAppStore:
+			for _, id := range l.Items {
 				store[id] = true
 			}
-			names := appNames(old.Apps, strings.Fields(ids), func(a inventory.App) string { return a.StoreID })
+			names := appNames(old.Apps, l.Items, func(a inventory.App) string { return a.StoreID })
 			runs(named("Sign in to the App Store, then install %s", names, plural(len(names), "app", "apps")))
 		}
 	}
