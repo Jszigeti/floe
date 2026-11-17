@@ -86,8 +86,9 @@ func StartAdmin(ctx context.Context, r run.Runner, password string) (*Admin, err
 
 // validationError tells an account sudo refuses from a wrong password, from any other failure.
 func validationError(err error) error {
+	printed := stderr(err)
 	has := func(phrases ...string) bool {
-		return slices.ContainsFunc(phrases, func(p string) bool { return strings.Contains(err.Error(), p) })
+		return slices.ContainsFunc(phrases, func(p string) bool { return strings.Contains(printed, p) })
 	}
 	if has("is not in the sudoers file", "is not allowed to run", "may not run") {
 		return fmt.Errorf("%w: %w", ErrNotAdmin, err)

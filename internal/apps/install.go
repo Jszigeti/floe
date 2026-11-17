@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -50,10 +49,10 @@ func Install(ctx context.Context, d Deps, p Plan, progress func(Progress)) Repor
 	if brew == "" && (p.Brewfile != "" || p.VSCode != "" || len(p.Casks) > 0) {
 		brew = rep.homebrew(ctx, d, t)
 	}
-	rep.FromHomebrew = rep.bundle(ctx, d, t, brew, p.Brewfile, &rep.BrewFailed)
+	rep.FromHomebrew, rep.BrewFailed = rep.bundle(ctx, d, t, brew, p.Brewfile, p.BrewfileCasks)
 	rep.casks(ctx, d, t, brew, p.Casks)
 	rep.store(ctx, d, t, p.StoreIDs)
-	rep.bundle(ctx, d, t, brew, p.VSCode, &rep.ExtensionsFailed, vscodeEnv(d.AppsRoot)...)
+	_, rep.ExtensionsFailed = rep.bundle(ctx, d, t, brew, p.VSCode, nil, vscodeEnv(d.AppsRoot)...)
 	rep.Missing = missingApps(p.Expected, d.AppsRoot)
 	return rep
 }
@@ -77,56 +76,42 @@ func (rep *Report) homebrew(ctx context.Context, d Deps, t *tracker) string {
 	// The installer exits 0 when its own download fails, so a missing brew with no error means no network.
 	rep.Homebrew = "its download failed, check the internet connection"
 	if err != nil {
-		rep.Homebrew = "its installer failed: " + reason(installer, err)
+		rep.Homebrew = "its installer failed: " + reason(err)
 	}
 	return ""
 }
 
-// bundle installs file's entries, adds the ones that failed to failedList, and returns how many
-// of its casks, the apps, are in place: none when brew bundle failed without naming its failures.
-func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, failedList *[]string, env ...string) int {
+// bundle installs file's entries and returns how many of its casks, the apps, are in place, and
+// the entries that failed: no cask in place when brew bundle failed without naming its failures.
+func (rep *Report) bundle(ctx context.Context, d Deps, t *tracker, brew, file string, casks []string, env ...string) (installed int, failed []string) {
 	if file == "" {
-		return 0
+		return 0, nil
 	}
 	t.step(entries(file), "", "brew")
 	command := "brew bundle install --file " + file
 	if brew == "" {
 		rep.Commands = append(rep.Commands, command)
 		t.finish()
-		return 0
+		return 0, nil
 	}
 	c := run.Cmd{Name: brew, Args: []string{"bundle", "install", "--file", file}, Env: append(d.Admin.Env(), env...)}
 	err := t.run(ctx, d.Runner, c, brewLine)
-	casks := casksIn(file)
 	if err == nil {
-		return len(casks)
+		return len(casks), nil
 	}
 	rep.Commands = append(rep.Commands, command)
-	var failed []string
-	for _, m := range brewFailedRe.FindAllStringSubmatch(err.Error(), -1) {
+	for _, m := range brewFailedRe.FindAllStringSubmatch(stderr(err), -1) {
 		failed = append(failed, strings.TrimSpace(m[1]+m[2]))
 	}
-	*failedList = append(*failedList, failed...)
 	if len(failed) == 0 {
-		rep.Notes = append(rep.Notes, fmt.Sprintf("brew bundle failed on %s: %s", filepath.Base(file), reason(c, err)))
-		return 0
+		rep.Notes = append(rep.Notes, fmt.Sprintf("brew bundle failed on %s: %s", filepath.Base(file), reason(err)))
+		return 0, nil
 	}
-	// Homebrew names a failed cask by its token or by its app's name, in any case.
-	return len(slices.DeleteFunc(casks, func(c string) bool {
-		return slices.ContainsFunc(failed, func(f string) bool { return strings.EqualFold(f, c) })
-	}))
-}
-
-// casksIn lists the cask tokens of a Brewfile.
-func casksIn(file string) []string {
-	data, _ := os.ReadFile(file) // an unreadable Brewfile installed nothing
-	var casks []string
-	for line := range strings.Lines(string(data)) {
-		if m := caskLineRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
-			casks = append(casks, path.Base(m[1]))
-		}
-	}
-	return casks
+	// Homebrew names a failed cask by its token or by its app's name, in any case. The clone
+	// keeps the plan's own list whole.
+	return len(slices.DeleteFunc(slices.Clone(casks), func(token string) bool {
+		return slices.ContainsFunc(failed, func(f string) bool { return strings.EqualFold(f, token) })
+	})), failed
 }
 
 // VSCodeBin is where VS Code keeps its code command, which installs its extensions.
@@ -145,17 +130,23 @@ func vscodeEnv(appsRoot string) []string {
 	return []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH")}
 }
 
-// reason is the first line c printed on failing, without the command and exit status the
-// runner puts before it; the exit status alone when c printed nothing.
-func reason(c run.Cmd, err error) string {
-	msg := strings.TrimPrefix(err.Error(), fmt.Sprintf("%s %v: ", c.Name, c.Args))
-	if inner := errors.Unwrap(err); inner != nil {
-		msg = strings.TrimPrefix(msg, inner.Error()+":")
-		if strings.TrimSpace(msg) == "" {
-			msg = inner.Error()
-		}
+// stderr is what a failed command printed on stderr; an error no command returned is its own text.
+func stderr(err error) string {
+	var re *run.Error
+	if errors.As(err, &re) {
+		return re.Stderr
 	}
-	line, _, _ := strings.Cut(strings.TrimSpace(msg), "\n")
+	return err.Error()
+}
+
+// reason is the first line a failed command printed on stderr; its exit status when it printed nothing.
+func reason(err error) string {
+	msg := strings.TrimSpace(stderr(err))
+	var re *run.Error
+	if msg == "" && errors.As(err, &re) {
+		msg = re.Err.Error()
+	}
+	line, _, _ := strings.Cut(msg, "\n")
 	return line
 }
 

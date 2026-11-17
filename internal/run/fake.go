@@ -6,9 +6,19 @@ import (
 	"sync"
 )
 
+// Response is what a Fake command returns. With Stderr set, Err comes back as the *Error
+// ExecRunner gives, carrying the command and that stderr.
 type Response struct {
-	Out string
-	Err error
+	Out    string
+	Err    error
+	Stderr string
+}
+
+func (r Response) result(c Cmd) (string, error) {
+	if r.Err != nil && r.Stderr != "" {
+		return r.Out, &Error{Name: c.Name, Args: c.Args, Err: r.Err, Stderr: r.Stderr}
+	}
+	return r.Out, r.Err
 }
 
 // Fake records every command; it is safe for the parallel tasks of a Replace. Its Handler runs
@@ -29,9 +39,9 @@ func (f *Fake) Run(_ context.Context, c Cmd) (string, error) {
 		return f.Handler(c)
 	}
 	if r, ok := f.Responses[strings.TrimSpace(c.Name+" "+strings.Join(c.Args, " "))]; ok {
-		return r.Out, r.Err
+		return r.result(c)
 	}
-	return f.Default.Out, f.Default.Err
+	return f.Default.result(c)
 }
 
 // CalledWith reports whether any recorded call contains all given tokens in name+args.

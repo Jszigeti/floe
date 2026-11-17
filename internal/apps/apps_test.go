@@ -28,6 +28,7 @@ func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	}
 }
 
+// installTool puts an executable named name in dir, as Homebrew would.
 func installTool(t *testing.T, dir, name string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
@@ -35,6 +36,7 @@ func installTool(t *testing.T, dir, name string) string {
 	return p
 }
 
+// fullPlan is a plan with one entry of each kind, its filtered Brewfiles written in a temp dir.
 func fullPlan(t *testing.T) Plan {
 	t.Helper()
 	dir := t.TempDir()
@@ -51,6 +53,7 @@ func TestInstallRunsBrewThenCasksThenStoreThenVSCode(t *testing.T) {
 	installTool(t, d.BrewDirs[0], "mas")
 	p := fullPlan(t)
 	writeFile(t, p.Brewfile, "brew \"jq\"\ncask \"arc\"\n", 0o644)
+	p.BrewfileCasks = []string{"arc"}
 
 	rep := Install(context.Background(), d, p, nil)
 
@@ -66,7 +69,7 @@ func TestInstallRunsBrewThenCasksThenStoreThenVSCode(t *testing.T) {
 		t.Fatalf("calls = %q, want %q", order, want)
 	}
 	if len(rep.Commands) != 0 || len(rep.BrewFailed) != 0 || len(rep.StoreFailed) != 0 {
-		t.Fatalf("report = %+v", rep)
+		t.Fatalf("commands = %q, brew failed = %q, store failed = %q, want none of them", rep.Commands, rep.BrewFailed, rep.StoreFailed)
 	}
 	if rep.FromHomebrew != 2 || rep.FromAppStore != 1 {
 		t.Fatalf("installed %d from Homebrew and %d from the App Store, want arc and zed, jq being no app, then 111", rep.FromHomebrew, rep.FromAppStore)
@@ -134,10 +137,8 @@ func TestInstallGivesTheAdminToEveryCommand(t *testing.T) {
 	}
 }
 
-// runnerErr is an error as run.ExecRunner words it: the command, the exit status, then stderr.
-func runnerErr(c run.Cmd, stderr string) error {
-	return fmt.Errorf("%s %v: %w: %s", c.Name, c.Args, errors.New("exit status 1"), stderr)
-}
+// errExit is how a command that failed ended, for a fake to return with its stderr.
+var errExit = errors.New("exit status 1")
 
 func TestInstallSkipsHomebrewWithoutAnAdmin(t *testing.T) {
 	f := &run.Fake{}
@@ -158,7 +159,7 @@ func TestInstallSkipsHomebrewWithoutAnAdmin(t *testing.T) {
 		"brew bundle install --file " + p.VSCode,
 	}
 	if !slices.Equal(rep.Commands, want) || !slices.Equal(rep.Missing, []string{"Zed.app"}) {
-		t.Fatalf("report = %+v", rep)
+		t.Fatalf("commands = %q, missing = %q, want %q and %q", rep.Commands, rep.Missing, want, []string{"Zed.app"})
 	}
 	if rep.Homebrew != "floe had no administrator password" || len(rep.Notes) != 0 {
 		t.Fatalf("Homebrew = %q, notes = %q, want the reason said once", rep.Homebrew, rep.Notes)
@@ -191,7 +192,7 @@ func TestInstallJudgesHomebrewByTheBrewItLeaves(t *testing.T) {
 				if tc.stderr == "" {
 					return "", nil
 				}
-				return "", runnerErr(c, tc.stderr)
+				return "", &run.Error{Name: c.Name, Args: c.Args, Err: errExit, Stderr: tc.stderr}
 			}
 
 			rep := Install(context.Background(), d, Plan{Casks: []string{"zed"}}, nil)
@@ -213,17 +214,12 @@ func TestInstallJudgesHomebrewByTheBrewItLeaves(t *testing.T) {
 func TestInstallKeepsWhyABrewBundleFailed(t *testing.T) {
 	f := &run.Fake{}
 	d := testDeps(t, f)
-	installTool(t, d.BrewDirs[0], "brew")
+	brew := installTool(t, d.BrewDirs[0], "brew")
 	p := fullPlan(t)
 	p.Casks, p.StoreIDs = nil, nil
-	f.Handler = func(c run.Cmd) (string, error) {
-		switch c.Args[3] {
-		case p.Brewfile:
-			return "", runnerErr(c, "Error: No such file or directory @ rb_sysopen\nbacktrace")
-		case p.VSCode:
-			return "", runnerErr(c, "Failed to install ms-python.python: no VS Code")
-		}
-		return "", nil
+	f.Responses = map[string]run.Response{
+		brew + " bundle install --file " + p.Brewfile: {Err: errExit, Stderr: "Error: No such file or directory @ rb_sysopen\nbacktrace"},
+		brew + " bundle install --file " + p.VSCode:   {Err: errExit, Stderr: "Failed to install ms-python.python: no VS Code"},
 	}
 
 	rep := Install(context.Background(), d, p, nil)
@@ -233,7 +229,7 @@ func TestInstallKeepsWhyABrewBundleFailed(t *testing.T) {
 	}
 	// The summary reads BrewFailed for the apps the Brewfile left, extensions have their own list.
 	if len(rep.BrewFailed) != 0 || !slices.Equal(rep.ExtensionsFailed, []string{"ms-python.python"}) {
-		t.Fatalf("failed = %q, extensions failed = %q", rep.BrewFailed, rep.ExtensionsFailed)
+		t.Fatalf("failed = %q, extensions failed = %q, want none and %q", rep.BrewFailed, rep.ExtensionsFailed, []string{"ms-python.python"})
 	}
 }
 
@@ -271,7 +267,7 @@ func TestInstallKeepsTheTimestampFreshDuringADownload(t *testing.T) {
 	rep := Install(context.Background(), d, Plan{StoreIDs: []string{"111"}}, nil)
 
 	if len(rep.StoreFailed) != 0 {
-		t.Fatalf("report = %+v", rep)
+		t.Fatalf("store failed = %q, want none", rep.StoreFailed)
 	}
 	after := len(sudoRunner.Calls)
 	time.Sleep(20 * time.Millisecond)
@@ -354,22 +350,18 @@ func TestInstallParsesHomebrew7Failures(t *testing.T) {
 	p.Casks = []string{"zed", "arc"}
 	p.StoreIDs = []string{"111", "222"}
 	writeFile(t, p.Brewfile, "brew \"jq\"\ncask \"capcut\"\ncask \"rectangle\"\n", 0o644)
-	f.Handler = func(c run.Cmd) (string, error) {
-		switch {
-		case c.Name == brew && c.Args[0] == "bundle" && c.Args[3] == p.Brewfile:
-			return "", fmt.Errorf("%s %v: exit status 1: Failed to install CapCut: download failed\nFailed to install jq: no bottle\nUpgrading git has failed!\n`brew bundle` failed! 3 Brewfile dependencies failed to install", c.Name, c.Args)
-		case c.Name == brew && c.Args[0] == "install" && c.Args[3] == "arc":
-			return "", errors.New("brew [install --cask arc]: exit status 1: Error: Cask 'arc' is unavailable")
-		case c.Name == mas && c.Args[1] == "222":
-			return "", errors.New("mas [install 222]: exit status 1: download failed")
-		}
-		return "", nil
+	p.BrewfileCasks = []string{"capcut", "rectangle"}
+	f.Responses = map[string]run.Response{
+		brew + " bundle install --file " + p.Brewfile: {Err: errExit, Stderr: "Failed to install CapCut: download failed\nFailed to install jq: no bottle\nUpgrading git has failed!\n`brew bundle` failed! 3 Brewfile dependencies failed to install"},
+		brew + " install --cask --adopt arc":          {Err: errExit, Stderr: "Error: Cask 'arc' is unavailable"},
+		mas + " install 222":                          {Err: errExit, Stderr: "download failed"},
 	}
 
 	rep := Install(context.Background(), d, p, nil)
 
-	if !slices.Equal(rep.BrewFailed, []string{"CapCut", "jq", "git", "arc"}) || !slices.Equal(rep.StoreFailed, []string{"222"}) {
-		t.Fatalf("failed = %q and %q", rep.BrewFailed, rep.StoreFailed)
+	wantBrew, wantStore := []string{"CapCut", "jq", "git", "arc"}, []string{"222"}
+	if !slices.Equal(rep.BrewFailed, wantBrew) || !slices.Equal(rep.StoreFailed, wantStore) {
+		t.Fatalf("failed = %q and %q, want %q and %q", rep.BrewFailed, rep.StoreFailed, wantBrew, wantStore)
 	}
 	want := []string{"brew bundle install --file " + p.Brewfile, "brew install --cask arc", "mas install 222"}
 	if !slices.Equal(rep.Commands, want) {
@@ -510,28 +502,24 @@ func TestFindToolPrefersPath(t *testing.T) {
 	}
 }
 
-func TestMasEntriesKeepsNumericIDsOnly(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "mas.txt")
-	writeFile(t, path, "111  Keynote  (15.2)\n\nNo installed apps found\n 222  Tempus Stopwatch  (2026.2)\n", 0o644)
-	if got := masEntries(path); !slices.Equal(got, []masEntry{{"111", "Keynote"}, {"222", "Tempus Stopwatch"}}) {
-		t.Fatalf("masEntries = %q", got)
-	}
-}
-
-func TestMissingAppsSkipsHiddenEntries(t *testing.T) {
+func TestMissingAppsListsTheAppsAbsentFromTheRoot(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "Safari.app"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := missingApps([]string{"Safari.app", "Zed.app"}, root); !slices.Equal(got, []string{"Zed.app"}) {
-		t.Fatalf("missingApps = %q", got)
+	if got, want := missingApps([]string{"Safari.app", "Zed.app"}, root), []string{"Zed.app"}; !slices.Equal(got, want) {
+		t.Fatalf("missingApps = %q, want %q", got, want)
 	}
-	list := filepath.Join(t.TempDir(), "applications.txt")
+}
+
+func TestListedAppsSkipsHiddenEntries(t *testing.T) {
+	dir := t.TempDir()
+	list := filepath.Join(dir, "applications.txt")
 	writeFile(t, list, ".DS_Store\n.localized\nSafari.app\nZed.app\n", 0o644)
-	if got := listedApps(list); !slices.Equal(got, []string{"Safari.app", "Zed.app"}) {
-		t.Fatalf("listedApps = %q", got)
+	if got, want := listedApps(list), []string{"Safari.app", "Zed.app"}; !slices.Equal(got, want) {
+		t.Fatalf("listedApps = %q, want %q", got, want)
 	}
-	if got := listedApps(filepath.Join(root, "none.txt")); got != nil {
+	if got := listedApps(filepath.Join(dir, "none.txt")); got != nil {
 		t.Fatalf("no list must mean nothing expected, got %q", got)
 	}
 }
@@ -568,7 +556,7 @@ func TestReasonOfASilentFailureIsItsExitStatus(t *testing.T) {
 	for script, want := range cases {
 		c := run.Cmd{Name: "sh", Args: []string{"-c", script}}
 		_, err := run.ExecRunner{}.Run(context.Background(), c)
-		if got := reason(c, err); got != want {
+		if got := reason(err); got != want {
 			t.Errorf("reason(%q) = %q, want %q", script, got, want)
 		}
 	}

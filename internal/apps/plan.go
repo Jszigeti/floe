@@ -14,15 +14,16 @@ import (
 )
 
 // caskLineRe reads the token of a Brewfile `cask "token"` line.
-var caskLineRe = regexp.MustCompile(`^cask\s+"([^"]+)"`)
+var caskLineRe = regexp.MustCompile(`^cask\s+["']([^"']+)["']`)
 
 // Plan is every install of a new Mac, each tool run once.
 type Plan struct {
-	Brewfile string   // path of the recipe's Brewfile without its mas and vscode lines, "" when it has none
-	VSCode   string   // path of a Brewfile holding only the vscode lines, run once the editor exists
-	Casks    []string // inventory casks the Brewfile lacks
-	StoreIDs []string // App Store ids, empty when the App Store step was skipped
-	Expected []string // app file names the old Mac's /Applications held
+	Brewfile      string   // path of the recipe's Brewfile without its mas and vscode lines, "" when it has none
+	BrewfileCasks []string // cask tokens of Brewfile, the apps it installs
+	VSCode        string   // path of a Brewfile holding only the vscode lines, run once the editor exists
+	Casks         []string // inventory casks the Brewfile lacks
+	StoreIDs      []string // App Store ids, empty when the App Store step was skipped
+	Expected      []string // app file names the old Mac's /Applications held
 }
 
 // PlanFrom splits the recipe in recipeDir against the inventory list. brew bundle would install
@@ -36,7 +37,6 @@ func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
 		return Plan{}, err
 	}
 	var main, vscode []string
-	inBrewfile := map[string]bool{}
 	for _, line := range strings.Split(string(data), "\n") {
 		switch kind(line) {
 		case "", "mas":
@@ -45,7 +45,7 @@ func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
 		default:
 			main = append(main, line)
 			if m := caskLineRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
-				inBrewfile[path.Base(m[1])] = true
+				p.BrewfileCasks = append(p.BrewfileCasks, path.Base(m[1]))
 			}
 		}
 	}
@@ -57,7 +57,7 @@ func PlanFrom(recipeDir string, list []inventory.App) (Plan, error) {
 	}
 	for _, a := range list {
 		switch {
-		case a.Source == inventory.SourceCask && a.Cask != "" && !inBrewfile[a.Cask] && !slices.Contains(p.Casks, a.Cask):
+		case a.Source == inventory.SourceCask && a.Cask != "" && !slices.Contains(p.BrewfileCasks, a.Cask) && !slices.Contains(p.Casks, a.Cask):
 			p.Casks = append(p.Casks, a.Cask)
 		case a.Source == inventory.SourceAppStore && a.StoreID != "" && !slices.Contains(p.StoreIDs, a.StoreID):
 			p.StoreIDs = append(p.StoreIDs, a.StoreID)
@@ -75,11 +75,7 @@ func (p Plan) NeedsAdmin(brewDirs []string) bool {
 	if p.Brewfile == "" && p.VSCode == "" {
 		return false
 	}
-	if FindTool("brew", brewDirs) == "" {
-		return true
-	}
-	data, _ := os.ReadFile(p.Brewfile) // an unreadable Brewfile installs nothing
-	return slices.ContainsFunc(strings.Split(string(data), "\n"), func(line string) bool { return kind(line) == "cask" })
+	return FindTool("brew", brewDirs) == "" || len(p.BrewfileCasks) > 0
 }
 
 // ListedApps stands in for the inventory of a backup made before it existed: the
@@ -89,12 +85,13 @@ func ListedApps(recipeDir string, casks inventory.CaskIndex) []inventory.App {
 	files := listedApps(filepath.Join(recipeDir, "applications.txt"))
 	var store []inventory.App
 	fromStore := map[string]bool{}
-	for _, e := range masEntries(filepath.Join(recipeDir, "mas.txt")) {
-		name := e.name
-		if file := storeFile(files, e.name); file != "" {
+	masList, _ := os.ReadFile(filepath.Join(recipeDir, "mas.txt")) // a backup without mas.txt has no App Store app
+	for _, e := range inventory.ParseMasList(string(masList)) {
+		name := e.Name
+		if file := storeFile(files, e.Name); file != "" {
 			fromStore[file], name = true, strings.TrimSuffix(file, ".app")
 		}
-		store = append(store, inventory.App{Name: name, Source: inventory.SourceAppStore, StoreID: e.id})
+		store = append(store, inventory.App{Name: name, Source: inventory.SourceAppStore, StoreID: e.ID})
 	}
 	var list []inventory.App
 	for _, file := range files {
@@ -136,8 +133,8 @@ func writeLines(file string, lines []string) (string, error) {
 }
 
 // listedApps reads applications.txt, hidden files aside.
-func listedApps(path string) []string {
-	data, err := os.ReadFile(path)
+func listedApps(file string) []string {
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil
 	}

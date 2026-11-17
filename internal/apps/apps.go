@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
@@ -77,9 +76,9 @@ func BrewDownloads(home string) string {
 // DownloadedBytes is what the files of dir hold. brew's curl writes a download there as it
 // comes, even when it prints nothing.
 func DownloadedBytes(dir string) int64 {
-	entries, _ := os.ReadDir(dir) // no folder yet: nothing downloaded
+	files, _ := os.ReadDir(dir) // no folder yet: nothing downloaded
 	var n int64
-	for _, e := range entries {
+	for _, e := range files {
 		if info, err := e.Info(); err == nil {
 			n += info.Size()
 		}
@@ -103,28 +102,6 @@ func FindTool(name string, dirs []string) string {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-type masEntry struct{ id, name string }
-
-// masEntries reads `mas list` output, "497799835  Xcode  (15.0)".
-func masEntries(path string) []masEntry {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var list []masEntry
-	for _, line := range strings.Split(string(data), "\n") {
-		id, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
-		if _, err := strconv.Atoi(id); err != nil {
-			continue
-		}
-		if i := strings.LastIndex(rest, "("); i > 0 {
-			rest = rest[:i]
-		}
-		list = append(list, masEntry{id, strings.TrimSpace(rest)})
-	}
-	return list
 }
 
 // missingApps lists the names absent from appsRoot.

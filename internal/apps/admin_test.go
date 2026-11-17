@@ -165,7 +165,7 @@ func TestStartAdminTellsANonAdminAccountFromAWrongPassword(t *testing.T) {
 		"Sorry, user jonas is not allowed to run sudo on mac.",
 		"Sorry, user jonas may not run sudo on mac.",
 	} {
-		f := &run.Fake{Default: run.Response{Err: errors.New("sudo [-A -v]: exit status 1: " + stderr)}}
+		f := &run.Fake{Default: run.Response{Err: errExit, Stderr: stderr}}
 		if _, err := StartAdmin(context.Background(), f, "pw"); !errors.Is(err, ErrNotAdmin) || errors.Is(err, ErrRefused) {
 			t.Errorf("%s: StartAdmin = %v, want ErrNotAdmin", stderr, err)
 		}
@@ -173,7 +173,7 @@ func TestStartAdminTellsANonAdminAccountFromAWrongPassword(t *testing.T) {
 }
 
 func TestStartAdminWrapsAnyOtherFailure(t *testing.T) {
-	f := &run.Fake{Default: run.Response{Err: errors.New("sudo [-A -v]: signal: killed: ")}}
+	f := &run.Fake{Default: run.Response{Err: &run.Error{Name: sudo, Args: []string{"-A", "-v"}, Err: errors.New("signal: killed")}}}
 
 	_, err := StartAdmin(context.Background(), f, "pw")
 	if err == nil || errors.Is(err, ErrRefused) || errors.Is(err, ErrNotAdmin) || !strings.Contains(err.Error(), "killed") {

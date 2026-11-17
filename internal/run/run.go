@@ -20,6 +20,20 @@ type Cmd struct {
 	Terminal bool
 }
 
+// Error is a command that failed: what ran, how it ended, and what it printed on stderr.
+type Error struct {
+	Name   string
+	Args   []string
+	Err    error
+	Stderr string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s %v: %v: %s", e.Name, e.Args, e.Err, e.Stderr)
+}
+
+func (e *Error) Unwrap() error { return e.Err }
+
 type Runner interface {
 	Run(ctx context.Context, c Cmd) (string, error)
 }
@@ -44,7 +58,7 @@ func (ExecRunner) Run(ctx context.Context, c Cmd) (string, error) {
 	}
 	// ErrWaitDelay alone means the command itself succeeded and only its child still held the output.
 	if err := cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
-		return stdout.String(), fmt.Errorf("%s %v: %w: %s", c.Name, c.Args, err, stderr.String())
+		return stdout.String(), &Error{Name: c.Name, Args: c.Args, Err: err, Stderr: stderr.String()}
 	}
 	return stdout.String(), nil
 }

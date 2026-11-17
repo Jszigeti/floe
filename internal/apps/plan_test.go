@@ -26,7 +26,6 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
-// installTool puts an executable named name in dir, as Homebrew would.
 func TestPlanFromSplitsBrewfile(t *testing.T) {
 	recipe := t.TempDir()
 	writeFile(t, filepath.Join(recipe, "Brewfile"), recipeBrewfile, 0o644)
@@ -51,7 +50,10 @@ func TestPlanFromSplitsBrewfile(t *testing.T) {
 		t.Errorf("VSCode = %q, want %q", got, want)
 	}
 	if !slices.Equal(p.Casks, []string{"zed"}) || !slices.Equal(p.StoreIDs, []string{"409183694"}) || !slices.Equal(p.Expected, []string{"Zed.app"}) {
-		t.Errorf("plan = %+v", p)
+		t.Errorf("casks = %q, store ids = %q, expected = %q, want [zed], [409183694] and [Zed.app]", p.Casks, p.StoreIDs, p.Expected)
+	}
+	if !slices.Equal(p.BrewfileCasks, []string{"google-chrome"}) {
+		t.Errorf("Brewfile casks = %q, want %q", p.BrewfileCasks, []string{"google-chrome"})
 	}
 	if readFile(t, filepath.Join(recipe, "Brewfile")) != recipeBrewfile {
 		t.Error("the recipe's own Brewfile must stay whole, a resumed run plans from it again")
@@ -64,7 +66,7 @@ func TestPlanFromWithoutBrewfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p.Brewfile != "" || p.VSCode != "" || p.Casks != nil || p.StoreIDs != nil {
-		t.Fatalf("plan = %+v", p)
+		t.Fatalf("plan = %+v, want no Brewfile, no casks and no App Store id", p)
 	}
 }
 
@@ -87,8 +89,6 @@ func TestListedAppsMatchesCasksAndStoreIDs(t *testing.T) {
 	}
 }
 
-// fullPlan is a plan with one entry of each kind, its filtered Brewfiles written in a temp dir.
-
 func TestPlanNeedsAdminOnlyForWhatCallsSudo(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	recipe, brewDir := t.TempDir(), t.TempDir()
@@ -104,18 +104,28 @@ func TestPlanNeedsAdminOnlyForWhatCallsSudo(t *testing.T) {
 	}
 	installTool(t, brewDir, "brew")
 	dirs := []string{brewDir}
-	for _, c := range []struct {
+	for _, tc := range []struct {
 		name string
 		plan Plan
 		want bool
 	}{
 		{"formulae", Plan{Brewfile: formulae, VSCode: formulae}, false},
-		{"brewfile cask", Plan{Brewfile: casks}, true},
+		{"brewfile cask", Plan{Brewfile: casks, BrewfileCasks: []string{"zed"}}, true},
 		{"inventory cask", Plan{Casks: []string{"zed"}}, true},
 		{"app store", Plan{StoreIDs: []string{"409183694"}}, true},
 	} {
-		if got := c.plan.NeedsAdmin(dirs); got != c.want {
-			t.Errorf("%s: NeedsAdmin = %v, want %v", c.name, got, c.want)
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.plan.NeedsAdmin(dirs); got != tc.want {
+				t.Errorf("NeedsAdmin = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCaskLineAcceptsBothQuotes(t *testing.T) {
+	for _, line := range []string{`cask "arc"`, `cask 'arc'`} {
+		if m := caskLineRe.FindStringSubmatch(line); m == nil || m[1] != "arc" {
+			t.Errorf("caskLineRe on %s = %q, want the token arc", line, m)
 		}
 	}
 }

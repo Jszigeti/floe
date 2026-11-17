@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Jszigeti/floe/internal/run"
@@ -43,6 +44,7 @@ type App struct {
 // Scan inventories the .app bundles in each root and its first-level
 // subfolders. masList is the output of `mas list`. A missing root is skipped.
 func Scan(ctx context.Context, r run.Runner, roots []string, casks CaskIndex, masList string) ([]App, error) {
+	store := ParseMasList(masList)
 	var apps []App
 	for _, root := range roots {
 		paths, err := bundles(root)
@@ -50,7 +52,7 @@ func Scan(ctx context.Context, r run.Runner, roots []string, casks CaskIndex, ma
 			return nil, err
 		}
 		for _, p := range paths {
-			apps = append(apps, scanApp(ctx, r, p, casks, masList, filepath.Dir(p) == root))
+			apps = append(apps, scanApp(ctx, r, p, casks, store, filepath.Dir(p) == root))
 		}
 	}
 	return apps, nil
@@ -94,7 +96,7 @@ type infoPlist struct {
 
 // Apps in a subfolder were put there by an installer (Python, Logi Options+): they are recorded,
 // never saved on their own, since restoring them without their installer would not run.
-func scanApp(ctx context.Context, r run.Runner, path string, casks CaskIndex, masList string, topLevel bool) App {
+func scanApp(ctx context.Context, r run.Runner, path string, casks CaskIndex, store []MasApp, topLevel bool) App {
 	file := filepath.Base(path)
 	info := readInfo(ctx, r, filepath.Join(path, "Contents", "Info.plist"))
 	team, apple := signature(ctx, r, path)
@@ -110,7 +112,7 @@ func scanApp(ctx context.Context, r run.Runner, path string, casks CaskIndex, ma
 	switch {
 	case exists(filepath.Join(path, "Contents", "_MASReceipt")):
 		app.Source = SourceAppStore
-		app.StoreID = storeID(masList, app.Name, info.Name, info.DisplayName)
+		app.StoreID = storeID(store, app.Name, info.Name, info.DisplayName)
 	case apple:
 		app.Source = SourceSystem
 	case casks[file] != "":
@@ -173,21 +175,31 @@ func walkBundle(ctx context.Context, r run.Runner, path string) ([]string, int64
 	return nested, size
 }
 
-// storeID finds the App Store id of an app in `mas list` output,
-// "361285480  Keynote  (15.2.1)", matching any of the app's names.
-func storeID(masList string, names ...string) string {
-	for _, line := range strings.Split(masList, "\n") {
-		id, rest, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if !ok {
+// MasApp is one App Store app of `mas list` output.
+type MasApp struct{ ID, Name string }
+
+// ParseMasList reads `mas list` output, "361285480  Keynote  (15.2.1)". A line whose first word
+// is not a number, or that names no app, is no app.
+func ParseMasList(out string) []MasApp {
+	var list []MasApp
+	for _, line := range strings.Split(out, "\n") {
+		id, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
+		if _, err := strconv.Atoi(id); err != nil {
 			continue
 		}
 		name := strings.TrimSpace(rest)
 		if i := strings.LastIndex(name, "("); i > 0 {
 			name = strings.TrimSpace(name[:i])
 		}
-		if slices.Contains(names, name) {
-			return id
-		}
+		list = append(list, MasApp{ID: id, Name: name})
+	}
+	return list
+}
+
+// storeID finds the App Store id of an app among store, matching any of the app's names.
+func storeID(store []MasApp, names ...string) string {
+	if i := slices.IndexFunc(store, func(a MasApp) bool { return a.Name != "" && slices.Contains(names, a.Name) }); i >= 0 {
+		return store[i].ID
 	}
 	return ""
 }

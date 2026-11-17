@@ -158,3 +158,12 @@ func TestWriteThenRead(t *testing.T) {
 		t.Errorf("apps.json not readable as written: %s", data)
 	}
 }
+
+func TestParseMasListKeepsNumericIDsOnly(t *testing.T) {
+	// An id without a name still installs, as mas.txt from an older backup may hold one.
+	out := "111  Keynote  (15.2)\n\nNo installed apps found\n 222  Tempus Stopwatch  (2026.2)\n333\n"
+	want := []MasApp{{ID: "111", Name: "Keynote"}, {ID: "222", Name: "Tempus Stopwatch"}, {ID: "333"}}
+	if got := ParseMasList(out); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseMasList = %q, want %q", got, want)
+	}
+}

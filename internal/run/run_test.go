@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,22 @@ func TestExecRunnerErrorIncludesStderr(t *testing.T) {
 	}
 }
 
+func TestExecRunnerErrorCarriesTheCommandAndItsStderr(t *testing.T) {
+	c := Cmd{Name: "sh", Args: []string{"-c", "echo boom >&2; exit 3"}}
+	_, err := ExecRunner{}.Run(context.Background(), c)
+	var re *Error
+	if !errors.As(err, &re) || re.Name != "sh" || re.Stderr != "boom\n" {
+		t.Fatalf("err = %#v, want a *Error for sh with stderr %q", err, "boom\n")
+	}
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+		t.Fatalf("err = %v, want it to unwrap to exit status 3", err)
+	}
+	if got, want := err.Error(), "sh [-c echo boom >&2; exit 3]: exit status 3: boom\n"; got != want {
+		t.Fatalf("err = %q, want %q", got, want)
+	}
+}
+
 // A child left running in the background keeps the output pipe open after its parent is killed,
 // as sudo's mas does once floe gives up on mas: Run must return anyway.
 func TestExecRunnerReturnsOnCancelThoughAChildKeepsTheOutput(t *testing.T) {
@@ -84,6 +101,16 @@ func TestFakeRecordsAndResponds(t *testing.T) {
 	}
 	if len(f.Calls) != 2 || f.Calls[0].Args[0] != "init" {
 		t.Fatalf("calls = %+v", f.Calls)
+	}
+}
+
+func TestFakeReturnsAnErrorWithStderr(t *testing.T) {
+	exit := errors.New("exit status 1")
+	f := &Fake{Default: Response{Err: exit, Stderr: "no tap"}}
+	_, err := f.Run(context.Background(), Cmd{Name: "brew", Args: []string{"tap"}})
+	var re *Error
+	if !errors.As(err, &re) || re.Name != "brew" || re.Stderr != "no tap" || !errors.Is(err, exit) {
+		t.Fatalf("err = %#v, want a *Error for brew wrapping %v with stderr %q", err, exit, "no tap")
 	}
 }
 
