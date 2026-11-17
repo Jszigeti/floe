@@ -73,10 +73,10 @@ func dumpUntrustedTaps(ctx context.Context, r run.Runner, path string) error {
 // keychainLabel matches an item label in `security dump-keychain` output (attributes only, never -d).
 var keychainLabel = regexp.MustCompile(`^\s*0x00000007 <blob>=.*"(.+) Safe Storage"$`)
 
-// dumpKeychainApps lists the apps keeping a session key in the login
-// keychain ("Chrome Safe Storage" → Chrome), from item labels only.
 const keychainTimeout = 10 * time.Second
 
+// dumpKeychainApps lists the apps keeping a session key in the login
+// keychain ("Chrome Safe Storage" → Chrome), from item labels only.
 func dumpKeychainApps(ctx context.Context, r run.Runner, home, path string) error {
 	// A keychain prompt would otherwise hold the nightly backup until someone answers it.
 	ctx, cancel := context.WithTimeout(ctx, keychainTimeout)

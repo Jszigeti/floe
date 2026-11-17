@@ -207,7 +207,7 @@ func WriteSummary(w io.Writer, res Result, actions []Action, offer bool) {
 			fmt.Fprintf(&b, "  %s\n", first)
 		}
 		fmt.Fprintf(&b, "\nFull report: %s\n", ReportFile)
-		_, _ = io.WriteString(w, b.String())
+		_, _ = io.WriteString(w, b.String()) // a terminal failing this write cannot show the error either; ReportFile keeps it
 		return
 	}
 	b.WriteString(ui.DoneLine(fmt.Sprintf("Restored %.1f GB of files and settings", float64(res.Restored)/1e9), res.RestoreTook) + "\n")
@@ -246,7 +246,7 @@ func WriteSummary(w io.Writer, res Result, actions []Action, offer bool) {
 		}
 	}
 	fmt.Fprintf(&b, "\nFull report: %s\n", ReportFile)
-	_, _ = io.WriteString(w, b.String())
+	_, _ = io.WriteString(w, b.String()) // a terminal failing this write cannot show the error either; ReportFile keeps it
 }
 
 // hinted says whether the line tells the user floe can do it; restarting needs no telling.

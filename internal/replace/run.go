@@ -96,7 +96,7 @@ func Run(ctx context.Context, d RunDeps) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	defer func() { _ = os.RemoveAll(tmp) }() // a leftover in the system temp folder harms nothing; macOS clears it
 	if d.Status == nil {
 		d.Status = &Status{}
 	}

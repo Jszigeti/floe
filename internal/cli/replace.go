@@ -47,7 +47,7 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	live := liveScreen(progress)
 	block := ui.NewBlock(progress, live, time.Now)
 	d.Runner = pausing{Runner: d.Runner, block: block}
-	client := &restic.Client{Bin: bin, Repo: b.Path, R: d.Runner, Progress: p.cmd.OutOrStdout()}
+	client := &restic.Client{Bin: bin, Repo: b.Path, R: d.Runner}
 	if err := askBackupPassphrase(ctx, p, d.Runner, client, b.Name); err != nil {
 		return err
 	}
