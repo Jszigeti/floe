@@ -292,6 +292,9 @@ func dumpRecipe(ctx context.Context, p prompter, client *restic.Client, id, oldH
 	}
 	for _, name := range recipeFiles {
 		data, err := client.Dump(ctx, id, filepath.Join(oldHome, ".local/state/floe/manifest", name))
+		if err != nil && !errors.Is(err, restic.ErrNotInSnapshot) {
+			return "", fmt.Errorf("reading %s from the backup: %w", name, err)
+		}
 		if err != nil {
 			p.cmd.Printf("  %s is not in the backup, skipped\n", name)
 			_ = os.Remove(filepath.Join(dir, name)) // an earlier run's copy would stand in for it
@@ -307,9 +310,12 @@ func dumpRecipe(ctx context.Context, p prompter, client *restic.Client, id, oldH
 // takeOverConfig is the old Mac's config moved to this home, or the defaults when the snapshot holds none.
 func takeOverConfig(ctx context.Context, p prompter, client *restic.Client, id, oldHome, home string) (config.Config, error) {
 	data, err := client.Dump(ctx, id, filepath.Join(oldHome, ".config/floe/config.toml"))
-	if err != nil {
+	if errors.Is(err, restic.ErrNotInSnapshot) {
 		p.cmd.Println("  The backup holds no floe config, using the defaults")
 		return config.Default()
+	}
+	if err != nil {
+		return config.Config{}, fmt.Errorf("reading the old Mac's floe config from the backup: %w", err)
 	}
 	old, err := config.Parse(data)
 	if err != nil {

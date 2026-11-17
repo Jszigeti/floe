@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Jszigeti/floe/internal/run"
@@ -151,5 +152,20 @@ func TestDumpPrintsOneFile(t *testing.T) {
 	out, err := newTestClient(f).Dump(context.Background(), "abc", "/Users/alice/.config/floe/config.toml")
 	if err != nil || out != "hour = 9\n" {
 		t.Fatalf("Dump = %q, %v", out, err)
+	}
+}
+
+// restic 0.19.1 exits 1 with this line for a path the snapshot lacks; any other failure, an iCloud
+// read included, is not a missing file.
+func TestDumpTellsAMissingPathFromAFailure(t *testing.T) {
+	missing := exitErr(t, `echo 'Fatal: cannot dump file: path "/Users" not found in snapshot' >&2; exit 1`)
+	_, err := newTestClient(&run.Fake{Default: run.Response{Err: missing}}).Dump(context.Background(), "abc", "/Users/alice/x")
+	if !errors.Is(err, ErrNotInSnapshot) || !strings.Contains(err.Error(), `path "/Users" not found`) {
+		t.Fatalf("err = %v, want ErrNotInSnapshot wrapping restic's error", err)
+	}
+	unreadable := exitErr(t, `echo 'Fatal: load(<data/1234>): resource deadlock avoided' >&2; exit 1`)
+	_, err = newTestClient(&run.Fake{Default: run.Response{Err: unreadable}}).Dump(context.Background(), "abc", "/Users/alice/x")
+	if err == nil || errors.Is(err, ErrNotInSnapshot) {
+		t.Fatalf("err = %v, want a plain failure", err)
 	}
 }

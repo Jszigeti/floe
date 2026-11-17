@@ -36,6 +36,12 @@ exclude = ["/Users/alice/Library/Caches", "node_modules"]
 
 const aliceSnapshot = `[{"time":"2026-09-18T13:00:00Z","short_id":"bbb222","paths":["/Users/alice"]}]`
 
+// errNotInSnapshot is the error restic 0.19.1 gives for a dump of a path the snapshot lacks.
+var errNotInSnapshot = errors.New(`restic [dump]: exit status 1: Fatal: cannot dump file: path "/Users/alice/.local" not found in snapshot`)
+
+// errUnreadable is a dump that failed reading the backup, not a missing file.
+var errUnreadable = errors.New(`restic [dump]: exit status 1: Fatal: load(<data/1234>): resource deadlock avoided`)
+
 // replaceFake answers every command a Replace runs on thisMac, with restore failing as given.
 func replaceFake(restoreErr error, totalSize string) *run.Fake {
 	return &run.Fake{Handler: func(c run.Cmd) (string, error) {
@@ -59,7 +65,7 @@ func replaceFake(restoreErr error, totalSize string) *run.Fake {
 		case arg(0) == "dump" && strings.HasSuffix(arg(2), "/config.toml"):
 			return oldMacConfig, nil
 		case arg(0) == "dump":
-			return "", errors.New(`Fatal: cannot dump file: path not found in snapshot`)
+			return "", errNotInSnapshot
 		}
 		return "", nil
 	}}
@@ -154,7 +160,7 @@ func TestReplaceUsesTheDefaultsWithoutAnOldConfig(t *testing.T) {
 	base := f.Handler
 	f.Handler = func(c run.Cmd) (string, error) {
 		if len(c.Args) > 0 && c.Args[0] == "dump" {
-			return "", errors.New("not found in snapshot")
+			return "", errNotInSnapshot
 		}
 		return base(c)
 	}
@@ -165,6 +171,53 @@ func TestReplaceUsesTheDefaultsWithoutAnOldConfig(t *testing.T) {
 	cfg, err := config.Load()
 	if err != nil || cfg.Hour != 13 {
 		t.Fatalf("config = %+v, %v", cfg, err)
+	}
+}
+
+// A backup the Mac fails to read must not pass for one without a recipe: the replace would
+// install none of the old Mac's apps.
+func TestReplaceStopsWhenTheRecipeCannotBeRead(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/Brewfile") {
+			return "", errUnreadable
+		}
+		return base(c)
+	}
+	out, err := runInit(f, dest+"\n\npw\n")
+	if !errors.Is(err, errUnreadable) || strings.Contains(out, "Brewfile is not in the backup") {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if resticCall(f, "tag") != nil || resticCall(f, "restore") != nil {
+		t.Fatal("the replace must stop before it changes the backup or the home")
+	}
+}
+
+// Nor for one without a config: this Mac would take the defaults over the old Mac's settings.
+func TestReplaceStopsWhenTheConfigCannotBeRead(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if len(c.Args) > 2 && c.Args[0] == "dump" && strings.HasSuffix(c.Args[2], "/config.toml") {
+			return "", errUnreadable
+		}
+		return base(c)
+	}
+	out, err := runInit(f, dest+"\n\npw\n")
+	if !errors.Is(err, errUnreadable) || strings.Contains(out, "no floe config") {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if resticCall(f, "restore") != nil {
+		t.Fatal("the replace must stop before it restores anything")
+	}
+	if _, err := config.Load(); err == nil {
+		t.Fatal("no config may be written from a backup that could not be read")
+	}
+	if st, ok, _ := replace.LoadState(); !ok || !st.Restoring {
+		t.Fatal("the state must stay, so a resume reads the config again")
 	}
 }
 

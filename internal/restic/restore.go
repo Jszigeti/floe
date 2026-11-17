@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -17,6 +18,12 @@ var ErrWrongPassphrase = errors.New("this passphrase does not open the backup")
 
 // ErrNoSnapshot means no snapshot of the asked kind exists.
 var ErrNoSnapshot = errors.New("the backup has no snapshot yet")
+
+// ErrNotInSnapshot means Dump asked for a path the snapshot does not hold.
+var ErrNotInSnapshot = errors.New("not in the snapshot")
+
+// notInSnapshot is the line restic 0.19.1 writes on stderr when a dumped path is missing.
+var notInSnapshot = regexp.MustCompile(`Fatal: cannot dump file: path ".*" not found in snapshot`)
 
 // PartialRestoreError lists the paths, relative to the restored folder, restic could not write.
 type PartialRestoreError struct {
@@ -141,7 +148,11 @@ func restoreErrors(msg string) []string {
 	return slices.Compact(paths)
 }
 
-// Dump returns one file of snapshot id.
+// Dump returns one file of snapshot id, ErrNotInSnapshot when the snapshot lacks it.
 func (c *Client) Dump(ctx context.Context, id, path string) (string, error) {
-	return c.run(ctx, "dump", id, path)
+	out, err := c.run(ctx, "dump", id, path)
+	if err != nil && notInSnapshot.MatchString(err.Error()) {
+		return "", fmt.Errorf("%w: %w", ErrNotInSnapshot, err)
+	}
+	return out, err
 }
