@@ -150,8 +150,9 @@ func vscodeEnv(appsRoot string) []string {
 func reason(c run.Cmd, err error) string {
 	msg := strings.TrimPrefix(err.Error(), fmt.Sprintf("%s %v: ", c.Name, c.Args))
 	if inner := errors.Unwrap(err); inner != nil {
-		if rest := strings.TrimPrefix(msg, inner.Error()+":"); strings.TrimSpace(rest) != "" {
-			msg = rest
+		msg = strings.TrimPrefix(msg, inner.Error()+":")
+		if strings.TrimSpace(msg) == "" {
+			msg = inner.Error()
 		}
 	}
 	line, _, _ := strings.Cut(strings.TrimSpace(msg), "\n")

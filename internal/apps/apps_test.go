@@ -561,3 +561,15 @@ func TestDownloadedBytesGrowsWithADownload(t *testing.T) {
 		t.Fatalf("downloaded = %d, want 8", got)
 	}
 }
+
+// A command that printed nothing gives its exit status alone, without the separator stderr would follow.
+func TestReasonOfASilentFailureIsItsExitStatus(t *testing.T) {
+	cases := map[string]string{"exit 1": "exit status 1", "kill -9 $$": "signal: killed", "echo 'no tap' >&2; exit 1": "no tap"}
+	for script, want := range cases {
+		c := run.Cmd{Name: "sh", Args: []string{"-c", script}}
+		_, err := run.ExecRunner{}.Run(context.Background(), c)
+		if got := reason(c, err); got != want {
+			t.Errorf("reason(%q) = %q, want %q", script, got, want)
+		}
+	}
+}
