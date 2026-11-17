@@ -40,12 +40,24 @@ var appleDomains = []Domain{
 	{Name: "com.apple.universalaccess"},
 }
 
-var traceWords = []string{"Recent", "Window", "Frame", "Date", "Time", "Count", "Last", "UUID", "Identifier", "Token", "History", "Bookmark"}
+// traceWords mark a key that records the old Mac's state, counters or screen layout, matched
+// whatever their case; a date value is a trace too, so words like Date and Time stay out.
+var traceWords = []string{
+	"recent", "window", "frame", "count", "last", "uuid", "identifier", "token", "history", "bookmark",
+	"analytics", "stamp", "bounds", "volumepositions", "gotofield", "navpanel", "showing", "serial",
+	"upgraded", "transition", "assets", "colorsync", "com.apple.gms.", "displayconfiguration",
+	"beforetermination", "trash-full",
+}
 
 // IsTrace reports whether a key records what happened on the old Mac rather than a choice the
 // user made. Finder's FXICloudDrive keys mirror the iCloud Drive state, which a key cannot turn on.
 func IsTrace(key string, value []byte, oldUUID string) bool {
-	if strings.HasPrefix(key, "AK") || strings.HasPrefix(key, "FXICloudDrive") || slices.ContainsFunc(traceWords, func(w string) bool { return strings.Contains(key, w) }) {
+	lower := strings.ToLower(key)
+	if strings.HasPrefix(key, "AK") || strings.HasPrefix(key, "FXICloudDrive") || strings.HasSuffix(key, "Ever") ||
+		slices.ContainsFunc(traceWords, func(w string) bool { return strings.Contains(lower, w) }) {
+		return true
+	}
+	if bytes.Contains(value, []byte("<date>")) {
 		return true
 	}
 	if oldUUID != "" && bytes.Contains(bytes.ToUpper(value), []byte(strings.ToUpper(oldUUID))) {
