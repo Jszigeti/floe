@@ -82,16 +82,22 @@ func (c *Client) Init(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) Backup(ctx context.Context, paths, excludes, tags []string) error {
+// BackupOptions are the patterns a backup leaves out and the tags its snapshot carries.
+type BackupOptions struct {
+	Excludes []string
+	Tags     []string
+}
+
+func (c *Client) Backup(ctx context.Context, paths []string, opts BackupOptions) error {
 	args := []string{"backup"}
 	if c.Progress == nil {
 		args = append(args, "--quiet")
 	}
-	for _, t := range tags {
+	for _, t := range opts.Tags {
 		args = append(args, "--tag", t)
 	}
 	args = append(args, paths...)
-	for _, e := range excludes {
+	for _, e := range opts.Excludes {
 		args = append(args, "--exclude", e)
 	}
 	if c.Progress == nil {

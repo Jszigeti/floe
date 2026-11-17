@@ -3,14 +3,12 @@
 package integration
 
 import (
-	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/replace"
@@ -64,19 +62,7 @@ var (
 )
 
 func TestExcludePatternsMatchRestic(t *testing.T) {
-	origBin := realResticBinPath()
-	t.Setenv("HOME", t.TempDir())
-	seedResticFromRealHome(t, origBin)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	bin, err := restic.EnsureBinary(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreResticToRealHome(t, origBin, bin)
-
-	home := os.Getenv("HOME")
+	ctx, home, client := newTestRepo(t)
 	old := filepath.Join(home, "old")
 	for _, p := range append(slices.Clone(ruleKept), ruleDropped...) {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(old, p)), 0o755); err != nil {
@@ -86,11 +72,7 @@ func TestExcludePatternsMatchRestic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	client := &restic.Client{Bin: bin, Repo: filepath.Join(home, "repo"), Pass: "integration-pw", R: run.ExecRunner{}}
-	if err := client.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Backup(ctx, []string{old}, nil, nil); err != nil {
+	if err := client.Backup(ctx, []string{old}, restic.BackupOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	snaps, err := client.Snapshots(ctx)
@@ -120,7 +102,7 @@ func TestExcludePatternsMatchRestic(t *testing.T) {
 
 	target := filepath.Join(home, "new")
 	if _, err := (run.ExecRunner{}).Run(ctx, run.Cmd{
-		Name: bin,
+		Name: client.Bin,
 		Args: []string{"restore", id + ":" + old, "--target", target, "--exclude-file", excludeFile},
 		Env:  []string{"RESTIC_REPOSITORY=" + client.Repo, "RESTIC_PASSWORD=" + client.Pass},
 	}); err != nil {

@@ -17,33 +17,12 @@ import (
 )
 
 func TestFullBackupRestoreCycle(t *testing.T) {
-	origBin := realResticBinPath()
-	t.Setenv("HOME", t.TempDir())
-	seedResticFromRealHome(t, origBin)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	bin, err := restic.EnsureBinary(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreResticToRealHome(t, origBin, bin)
-
-	home := os.Getenv("HOME")
+	ctx, home, client := newTestRepo(t)
 	src := filepath.Join(home, "data")
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v1"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	repo := filepath.Join(home, "dest/repo")
-	if err := os.MkdirAll(repo, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	client := &restic.Client{Bin: bin, Repo: repo, Pass: "integration-pw", R: run.ExecRunner{}}
-	if err := client.Init(ctx); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,19 +61,7 @@ func TestFullBackupRestoreCycle(t *testing.T) {
 }
 
 func TestTagUntagged(t *testing.T) {
-	origBin := realResticBinPath()
-	t.Setenv("HOME", t.TempDir())
-	seedResticFromRealHome(t, origBin)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	bin, err := restic.EnsureBinary(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	restoreResticToRealHome(t, origBin, bin)
-
-	home := os.Getenv("HOME")
+	ctx, home, client := newTestRepo(t)
 	src := filepath.Join(home, "data")
 	if err := os.MkdirAll(src, 0o755); err != nil {
 		t.Fatal(err)
@@ -102,14 +69,10 @@ func TestTagUntagged(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(src, "keep.txt"), []byte("v1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	client := &restic.Client{Bin: bin, Repo: filepath.Join(home, "repo"), Pass: "integration-pw", R: run.ExecRunner{}}
-	if err := client.Init(ctx); err != nil {
+	if err := client.Backup(ctx, []string{src}, restic.BackupOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.Backup(ctx, []string{src}, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Backup(ctx, []string{src}, nil, []string{"apps"}); err != nil {
+	if err := client.Backup(ctx, []string{src}, restic.BackupOptions{Tags: []string{"apps"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,6 +89,30 @@ func TestTagUntagged(t *testing.T) {
 		!slices.ContainsFunc(tags, func(tt []string) bool { return slices.Equal(tt, []string{"apps"}) }) {
 		t.Fatalf("tags = %q, want one [home] and one [apps] untouched", tags)
 	}
+}
+
+// newTestRepo isolates HOME, gets restic, and initializes an empty repository under
+// <home>/dest, the destination a test's config names.
+func newTestRepo(t *testing.T) (ctx context.Context, home string, client *restic.Client) {
+	t.Helper()
+	// A hung restic fails the test cleanly, before go test's own timeout panics.
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
+	origBin := realResticBinPath()
+	t.Setenv("HOME", t.TempDir())
+	seedResticFromRealHome(t, origBin)
+	bin, err := restic.EnsureBinary(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoreResticToRealHome(t, origBin, bin)
+
+	home = os.Getenv("HOME")
+	client = &restic.Client{Bin: bin, Repo: filepath.Join(home, "dest/repo"), Pass: "integration-pw", R: run.ExecRunner{}}
+	if err := client.Init(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return ctx, home, client
 }
 
 // realResticBinPath captures the restic binary path under the runner's real

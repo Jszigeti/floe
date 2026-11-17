@@ -42,42 +42,32 @@ func collect(t *testing.T, f *run.Fake) ([]Entry, error) {
 }
 
 func TestListStreamsEntries(t *testing.T) {
-	f := streamingFake(lsOutput, nil)
-	got, err := collect(t, f)
-	if err != nil {
-		t.Fatal(err)
-	}
 	want := []Entry{
 		{Path: "/Users/x", Type: "dir"},
 		{Path: "/Users/x/a.txt", Type: "file", Size: 6},
 		{Path: "/Users/x/link", Type: "symlink"},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("entries = %+v, want %+v", got, want)
-	}
-	if !reflect.DeepEqual(f.Calls[0].Args, []string{"ls", "--recursive", "--json", "e1e1ce62", "/Users/x"}) {
-		t.Fatalf("args = %v", f.Calls[0].Args)
-	}
-}
-
-func TestListReadsLastLineWithoutNewline(t *testing.T) {
-	got, err := collect(t, streamingFake(strings.TrimSuffix(lsOutput, "\n"), nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 || got[2].Path != "/Users/x/link" {
-		t.Fatalf("entries = %+v", got)
-	}
-}
-
-func TestListSkipsMalformedLines(t *testing.T) {
-	out := "not json\n" + lsOutput + "\n{\"struct_type\":\"node\",\"path\":\n"
-	got, err := collect(t, streamingFake(out, nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("entries = %+v", got)
+	wantArgs := []string{"ls", "--recursive", "--json", "e1e1ce62", "/Users/x"}
+	for _, tc := range []struct {
+		name, out string
+	}{
+		{"every node", lsOutput},
+		{"last line without newline", strings.TrimSuffix(lsOutput, "\n")},
+		{"malformed lines skipped", "not json\n" + lsOutput + "\n{\"struct_type\":\"node\",\"path\":\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := streamingFake(tc.out, nil)
+			got, err := collect(t, f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("entries = %+v, want %+v", got, want)
+			}
+			if !reflect.DeepEqual(f.Calls[0].Args, wantArgs) {
+				t.Errorf("args = %q, want %q", f.Calls[0].Args, wantArgs)
+			}
+		})
 	}
 }
 

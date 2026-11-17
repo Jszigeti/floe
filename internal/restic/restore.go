@@ -117,9 +117,7 @@ func (c *Client) RestoreFolder(ctx context.Context, id, folder, target, excludeF
 		Env:    c.env("RESTIC_PROGRESS_FPS=1"),
 		Stdout: w,
 	})
-	if len(w.rest) > 0 {
-		w.each(w.rest)
-	}
+	w.Flush()
 	var ee *exec.ExitError
 	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 		return err

@@ -50,7 +50,7 @@ func TestIsInitialized(t *testing.T) {
 func TestBackupBuildsArgs(t *testing.T) {
 	f := &run.Fake{}
 	err := newTestClient(f).Backup(context.Background(),
-		[]string{"/Users/x"}, []string{"node_modules", "/Users/x/.Trash"}, nil)
+		[]string{"/Users/x"}, BackupOptions{Excludes: []string{"node_modules", "/Users/x/.Trash"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestBackupClassifiesExitCode3(t *testing.T) {
 		}
 		return "", nil
 	}}
-	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, nil, nil)
+	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, BackupOptions{})
 	if !errors.Is(err, ErrIncomplete) {
 		t.Fatalf("err = %v, want ErrIncomplete", err)
 	}
@@ -84,7 +84,7 @@ func TestBackupClassifiesExitCode3(t *testing.T) {
 		}
 		return "", nil
 	}}
-	err = newTestClient(plain).Backup(context.Background(), []string{"/Users/x"}, nil, nil)
+	err = newTestClient(plain).Backup(context.Background(), []string{"/Users/x"}, BackupOptions{})
 	if errors.Is(err, ErrIncomplete) {
 		t.Fatal("plain error must not match ErrIncomplete")
 	}
@@ -114,7 +114,7 @@ exit 3
 		}
 		return "", nil
 	}}
-	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, nil, nil)
+	err := newTestClient(incomplete).Backup(context.Background(), []string{"/Users/x"}, BackupOptions{})
 
 	var ie *IncompleteError
 	if !errors.As(err, &ie) {
@@ -143,7 +143,7 @@ func TestBackupStreamsProgressWhenSet(t *testing.T) {
 	c := newTestClient(f)
 	var buf bytes.Buffer
 	c.Progress = &buf
-	if err := c.Backup(context.Background(), []string{"/Users/x"}, nil, nil); err != nil {
+	if err := c.Backup(context.Background(), []string{"/Users/x"}, BackupOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(f.Calls[0].Args, "--quiet") {
@@ -159,7 +159,7 @@ func TestBackupStreamsProgressWhenSet(t *testing.T) {
 
 func TestBackupPassesTags(t *testing.T) {
 	f := &run.Fake{}
-	if err := newTestClient(f).Backup(context.Background(), []string{"/Users/x"}, nil, []string{"home"}); err != nil {
+	if err := newTestClient(f).Backup(context.Background(), []string{"/Users/x"}, BackupOptions{Tags: []string{"home"}}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"backup", "--quiet", "--tag", "home", "/Users/x"}

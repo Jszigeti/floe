@@ -35,9 +35,7 @@ func (c *Client) List(ctx context.Context, id, path string, each func(Entry)) er
 		Env:    c.env(),
 		Stdout: w,
 	})
-	if len(w.rest) > 0 {
-		w.each(w.rest)
-	}
+	w.Flush()
 	return err
 }
 
@@ -54,4 +52,12 @@ func (w *lineWriter) Write(p []byte) (int, error) {
 	}
 	w.rest = bytes.Clone(lines[len(lines)-1])
 	return len(p), nil
+}
+
+// Flush hands the last line to each when the output did not end with a newline.
+func (w *lineWriter) Flush() {
+	if len(w.rest) > 0 {
+		w.each(w.rest)
+		w.rest = nil
+	}
 }

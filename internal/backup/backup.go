@@ -145,7 +145,7 @@ func Run(ctx context.Context, d Deps) error {
 		excludes = append(excludes, caskCache) // refreshed weekly and never restored
 	}
 	incomplete := false
-	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, excludes, []string{"home"}); err != nil {
+	if err := d.Client.Backup(ctx, d.Cfg.Scope.Paths, restic.BackupOptions{Excludes: excludes, Tags: []string{"home"}}); err != nil {
 		// Exit 3 still writes a snapshot — a daily "failed" alert for TCC-protected files would
 		// be crying wolf, so the notice is weekly.
 		if errors.Is(err, restic.ErrIncomplete) {
@@ -222,7 +222,7 @@ func backupApps(ctx context.Context, d Deps, apps []inventory.App) {
 	if len(paths) == 0 {
 		return
 	}
-	err := d.Client.Backup(ctx, paths, nil, []string{"apps"})
+	err := d.Client.Backup(ctx, paths, restic.BackupOptions{Tags: []string{"apps"}})
 	var ie *restic.IncompleteError
 	switch {
 	case errors.As(err, &ie):
