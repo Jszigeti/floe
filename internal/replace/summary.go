@@ -13,13 +13,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/Jszigeti/floe/internal/apps"
+	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/run"
 	"github.com/Jszigeti/floe/internal/ui"
 )
 
+const reportName = "replace-report.txt"
+
 // ReportFile is where WriteReport writes, as the summary names it.
-const ReportFile = "~/.local/state/floe/replace-report.txt"
+const ReportFile = "~/" + config.StateDir + "/" + reportName
 
 const (
 	// loginwindow's restart event needs no Automation permission, where System Events asks for one.
@@ -32,11 +35,7 @@ const (
 
 // ReportPath is ReportFile in this home.
 func ReportPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, strings.TrimPrefix(ReportFile, "~/")), nil
+	return config.StatePath(reportName)
 }
 
 // Action is one thing the run left to do.

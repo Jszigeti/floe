@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/inventory"
 )
 
@@ -33,7 +34,7 @@ var (
 )
 
 var floePaths = []string{
-	"/.local/bin/floe", "/.local/share/floe", "/.local/state/floe", "/.config/floe",
+	"/.local/bin/floe", "/.local/share/floe", "/" + config.StateDir, "/.config/floe",
 	"/Library/LaunchAgents/com.floe.backup.plist", "/Library/Logs/floe.log",
 }
 

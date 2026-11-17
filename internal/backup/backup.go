@@ -27,11 +27,7 @@ const maxIncompleteExamples = 3
 // IncompleteLogPath returns $HOME/.local/state/floe/last_incomplete.log,
 // where logIncomplete writes the full unreadable-path list every run.
 func IncompleteLogPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local/state/floe/last_incomplete.log"), nil
+	return config.StatePath("last_incomplete.log")
 }
 
 func writeIncompleteLog(paths []string) error {
@@ -107,7 +103,7 @@ func Run(ctx context.Context, d Deps) error {
 		return err
 	}
 
-	caskCache, _ := digest.StatePath("cask.json") // no home: no manifest, nothing to leave out
+	caskCache, _ := config.StatePath("cask.json") // no home: no manifest, nothing to leave out
 	apps := dumpManifest(ctx, d, caskCache)
 
 	onICloud := icloud.IsICloudPath(d.Cfg.Destination)
@@ -267,7 +263,7 @@ func dropReplacedTag(ctx context.Context, d Deps) {
 func migrateTags(ctx context.Context, d Deps) {
 	// One stamp per repository: a Mac that switches to another backup must migrate that one too.
 	name := "tags-migrated-" + fmt.Sprintf("%x", sha256.Sum256([]byte(d.Client.Repo)))[:12]
-	stamp, err := digest.StatePath(name)
+	stamp, err := config.StatePath(name)
 	if err != nil {
 		return
 	}

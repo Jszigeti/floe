@@ -141,10 +141,10 @@ func TestRunRestoresTheHomeWithTheRule(t *testing.T) {
 	if !strings.HasSuffix(home, "\n/Library/Preferences\n") {
 		t.Errorf("Preferences must stay out of the home restore, last line wins:\n%s", home)
 	}
-	if seen := d.Status.Read(); res.Restored != 100 || seen.Restore.Done != 100 {
+	if seen := d.Status.Progress(); res.Restored != 100 || seen.Restore.Done != 100 {
 		t.Fatalf("restored %d, status %+v, want the summary's 100 bytes", res.Restored, seen.Restore)
 	}
-	if seen := d.Status.Read(); !seen.RestoreEnded || !seen.AppsEnded {
+	if seen := d.Status.Progress(); !seen.RestoreEnded || !seen.AppsEnded {
 		t.Fatalf("both tasks must say they ended: %+v", seen)
 	}
 }
@@ -274,7 +274,7 @@ func TestRunTellsTheRestoreStepAfterTheHome(t *testing.T) {
 	f.Handler = func(c run.Cmd) (string, error) {
 		if c.Name == "restic" && c.Args[0] == "restore" {
 			mu.Lock()
-			seen[c.Args[2]] = d.Status.Read()
+			seen[c.Args[2]] = d.Status.Progress()
 			mu.Unlock()
 		}
 		return inner(c)
@@ -297,7 +297,7 @@ func TestRunTellsTheRestoreStepAfterTheHome(t *testing.T) {
 			t.Errorf("restoring %s the status said %+v, want home done %v, bundle %d of %d", c.from, got, c.homeDone, c.bundle, c.bundles)
 		}
 	}
-	if !d.Status.Read().RestoreEnded {
+	if !d.Status.Progress().RestoreEnded {
 		t.Fatal("the restore must say it ended")
 	}
 }
@@ -530,7 +530,7 @@ func TestStatusReadsBothTasks(t *testing.T) {
 	s.setRestore(restic.RestoreStatus{Done: 3, Total: 9})
 	s.setApps(apps.Progress{Done: 1, Total: 4, Current: "zed"})
 	s.setApps(apps.Progress{Done: 1, Total: 4, Current: "zed"})
-	if seen := s.Read(); seen.Restore.Done != 3 || seen.Apps.Current != "zed" || seen.AppsLines != 2 {
+	if seen := s.Progress(); seen.Restore.Done != 3 || seen.Apps.Current != "zed" || seen.AppsLines != 2 {
 		t.Fatalf("Read = %+v, want every apps report counted, the same one twice included", seen)
 	}
 }

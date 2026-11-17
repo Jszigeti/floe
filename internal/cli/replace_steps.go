@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Jszigeti/floe/internal/apps"
+	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/replace"
@@ -22,7 +23,7 @@ import (
 // inventoryOf reads the app inventory the backup carries. A backup made before it existed only
 // lists its apps, which are matched against Homebrew's cask list on this Mac.
 func inventoryOf(ctx context.Context, recipe, caskURL, home string) ([]inventory.App, error) {
-	list, err := inventory.Read(filepath.Join(recipe, "apps.json"))
+	list, err := inventory.Read(filepath.Join(recipe, manifest.AppsFile))
 	if err == nil {
 		return list, nil
 	}
@@ -30,7 +31,7 @@ func inventoryOf(ctx context.Context, recipe, caskURL, home string) ([]inventory
 		return nil, fmt.Errorf("reading the app inventory: %w", err)
 	}
 	// A cache that cannot be saved still gives the list.
-	casks, _ := inventory.LoadCasks(ctx, filepath.Join(home, ".local/state/floe/cask.json"), caskURL, 7*24*time.Hour, time.Now())
+	casks, _ := inventory.LoadCasks(ctx, filepath.Join(home, config.StateDir, "cask.json"), caskURL, 7*24*time.Hour, time.Now())
 	return apps.ListedApps(recipe, casks), nil
 }
 
@@ -43,12 +44,6 @@ func appsSize(list []inventory.App) int64 {
 		}
 	}
 	return size
-}
-
-// readFlag reads a true/false flag of the recipe; a backup made before it existed says false.
-func readFlag(recipe, name string) bool {
-	data, err := os.ReadFile(filepath.Join(recipe, name))
-	return err == nil && strings.TrimSpace(string(data)) == "true"
 }
 
 // askForPower has a MacBook on battery plugged in, since a flat battery or a closed lid would
@@ -105,25 +100,13 @@ func keepAwake(ctx context.Context, r run.Runner) (stop func()) {
 // oldMac is what the recipe says beyond the run: the sessions to sign in to again, the taps to
 // trust, and whether Desktop & Documents followed iCloud Drive there and not here.
 func oldMac(ctx context.Context, r run.Runner, recipe string, list []inventory.App) replace.OldMac {
-	old := replace.OldMac{Apps: list, KeychainApps: readLines(recipe, "keychain-apps.txt"), UntrustedTaps: readLines(recipe, "untrusted-taps.txt")}
-	if readFlag(recipe, "desktop-documents-icloud") {
+	old := replace.OldMac{Apps: list, KeychainApps: manifest.ReadList(recipe, manifest.KeychainAppsFile), UntrustedTaps: manifest.ReadList(recipe, manifest.UntrustedTapsFile)}
+	if manifest.ReadFlag(recipe, manifest.DesktopDocumentsFlag) {
 		// A state that cannot be read keeps the reminder, which costs nothing when it is on.
 		on, _ := manifest.DesktopDocumentsICloud(ctx, r)
 		old.TurnOnDesktopDocuments = !on
 	}
 	return old
-}
-
-// readLines reads a list of the recipe, none when a backup made before it has no such file.
-func readLines(recipe, name string) []string {
-	data, _ := os.ReadFile(filepath.Join(recipe, name))
-	var lines []string
-	for line := range strings.Lines(string(data)) {
-		if line = strings.TrimSpace(line); line != "" {
-			lines = append(lines, line)
-		}
-	}
-	return lines
 }
 
 // offerActions runs each action the user picks, until Enter or the end of the input: without

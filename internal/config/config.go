@@ -139,6 +139,19 @@ func Default() (Config, error) {
 	}, nil
 }
 
+// StateDir is floe's state folder, relative to a home: notice stamps, caches, the manifest, a
+// Replace in progress.
+const StateDir = ".local/state/floe"
+
+// StatePath is the file or folder named name in this home's StateDir.
+func StatePath(name string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, StateDir, name), nil
+}
+
 func Path() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

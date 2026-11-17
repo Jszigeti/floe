@@ -83,6 +83,18 @@ func TestPathHomeError(t *testing.T) {
 	}
 }
 
+func TestStatePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got, err := StatePath("cask.json"); err != nil || got != filepath.Join(home, ".local/state/floe/cask.json") {
+		t.Errorf("StatePath = %q, %v; want %q", got, err, filepath.Join(home, ".local/state/floe/cask.json"))
+	}
+	t.Setenv("HOME", "")
+	if _, err := StatePath("cask.json"); err == nil {
+		t.Error("want error when HOME is unresolvable")
+	}
+}
+
 func TestLoadHomeError(t *testing.T) {
 	t.Setenv("HOME", "")
 	if _, err := Load(); err == nil {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -17,7 +18,6 @@ import (
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/notify"
-	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/scan"
 	"github.com/Jszigeti/floe/internal/ui"
@@ -49,9 +49,10 @@ func newInitCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if resuming {
-				// A replaced backup is always <dest>/Floe.backup/<name>, as findBackups lists it.
-				dest := filepath.Dir(filepath.Dir(resume.Repo))
-				return runReplace(ctx, p, d, bin, dest, cfg.Machine, foundBackup{Name: resume.Backup, Path: resume.Repo}, resume)
+				// A state saved before Dest was recorded: a replaced backup is always
+				// <dest>/Floe.backup/<name>, as findBackups lists it.
+				dest := cmp.Or(resume.Dest, filepath.Dir(filepath.Dir(resume.Repo)))
+				return runReplace(ctx, p, d, replaceTarget{bin: bin, dest: dest, machine: cfg.Machine}, foundBackup{Name: resume.Backup, Path: resume.Repo}, &resume)
 			}
 			dest, err := normalizeDestination(p.ask("Backup destination", cfg.Destination))
 			if err != nil {
@@ -74,7 +75,7 @@ func newInitCmd(d Deps) *cobra.Command {
 						return err
 					}
 					if replacing {
-						return runReplace(ctx, p, d, bin, dest, cfg.Machine, b, replace.State{})
+						return runReplace(ctx, p, d, replaceTarget{bin: bin, dest: dest, machine: cfg.Machine}, b, nil)
 					}
 				}
 				if cfg.Repo, err = freeRepoPath(dest); err != nil {

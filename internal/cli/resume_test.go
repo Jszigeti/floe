@@ -75,6 +75,37 @@ func TestReplaceKeepsItsStateUntilItEnds(t *testing.T) {
 	}
 }
 
+// The state records the destination, which the resume reads instead of deriving it from the repo.
+func TestReplaceResumeReadsTheRecordedDestination(t *testing.T) {
+	_, dest, _ := startReplace(t)
+	f := replaceFake(nil, "1000")
+	base := f.Handler
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "osascript" && slices.Contains(c.Args, "JavaScript") {
+			return "com.tinyspeck.slackmacgap\tSlack\n", nil
+		}
+		return base(c)
+	}
+	if _, err := runInit(f, dest+"\n\npw\n"); err == nil {
+		t.Fatal("want a stop while Slack is open")
+	}
+	st, ok, err := replace.LoadState()
+	if err != nil || !ok || st.Dest != dest {
+		t.Fatalf("state = %+v, %v, %v, want dest %q", st, ok, err, dest)
+	}
+	st.Dest = t.TempDir()
+	if err := st.Save(); err != nil {
+		t.Fatal(err)
+	}
+	f.Handler = base
+	if out, err := runInit(f, "y\npw\n"); err != nil {
+		t.Fatalf("init: %v\n%s", err, out)
+	}
+	if cfg, err := config.Load(); err != nil || cfg.Destination != st.Dest {
+		t.Fatalf("config = %+v, %v, want destination %q", cfg, err, st.Dest)
+	}
+}
+
 func TestInitForgetsADeclinedResume(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	installFakeRestic(t)

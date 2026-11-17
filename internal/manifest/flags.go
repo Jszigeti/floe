@@ -46,6 +46,13 @@ func writeFlag(path string, on bool, err error) error {
 	return os.WriteFile(path, fmt.Appendf(nil, "%t\n", on), 0o644)
 }
 
+// ReadFlag reads the flag name in dir as writeFlag wrote it; a missing flag, as in a backup made
+// before it existed, is false.
+func ReadFlag(dir, name string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	return err == nil && strings.TrimSpace(string(data)) == "true"
+}
+
 // dumpUntrustedTaps lists the taps Homebrew 7 refuses to load until `brew trust`.
 func dumpUntrustedTaps(ctx context.Context, r run.Runner, path string) error {
 	out, err := r.Run(ctx, run.Cmd{Name: "brew", Args: []string{"tap-info", "--json", "--installed"}})
@@ -94,6 +101,19 @@ func dumpKeychainApps(ctx context.Context, r run.Runner, home, path string) erro
 	}
 	slices.Sort(names)
 	return writeLines(path, names)
+}
+
+// ReadList reads the list name in dir as writeLines wrote it, none when a backup made before it has
+// no such file.
+func ReadList(dir, name string) []string {
+	data, _ := os.ReadFile(filepath.Join(dir, name))
+	var lines []string
+	for line := range strings.Lines(string(data)) {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 func writeLines(path string, lines []string) error {

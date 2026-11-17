@@ -13,16 +13,15 @@ import (
 
 	"github.com/Jszigeti/floe/internal/apps"
 	"github.com/Jszigeti/floe/internal/config"
+	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/keychain"
 	"github.com/Jszigeti/floe/internal/launchd"
+	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/replace"
 	"github.com/Jszigeti/floe/internal/restic"
 	"github.com/Jszigeti/floe/internal/run"
 	"github.com/Jszigeti/floe/internal/ui"
 )
-
-// recipeFiles are the manifest files a backup carries (see internal/manifest).
-var recipeFiles = []string{"Brewfile", "mas.txt", "applications.txt", "apps.json", "photos-icloud", "desktop-documents-icloud", "keychain-apps.txt", "untrusted-taps.txt"}
 
 // runningAppsJXA lists the open apps as "<bundle id>\t<name>" lines. It reads NSWorkspace,
 // which needs no Automation permission.
@@ -34,96 +33,147 @@ function run() {
     .join("\n");
 }`
 
+// replaceTarget is what this Mac continues the backup with: the restic binary, the destination
+// and this Mac's hardware id, which the taken-over config records.
+type replaceTarget struct {
+	bin, dest, machine string
+}
+
+// replaceRun is a Replace whose every question was answered, ready to restore and install.
+type replaceRun struct {
+	to      replaceTarget
+	backup  foundBackup
+	home    string
+	runner  run.Runner // hands the terminal over to a command that needs it
+	client  *restic.Client
+	block   *ui.Block
+	live    bool
+	power   string
+	state   replace.State
+	recipe  string
+	list    []inventory.App
+	plan    apps.Plan
+	install apps.Deps
+	skipped []string // App Store apps left for later
+}
+
 // runReplace makes this Mac the continuation of b: its files, its apps, its floe settings, its
 // history. Every question comes first; once the run starts, failures only go to the report.
-// A resume carries the state of the interrupted run, a new Replace a zero State.
-func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, b foundBackup, resume replace.State) error {
-	home, err := os.UserHomeDir()
+// resume is the state of the interrupted run, nil for a new Replace.
+func runReplace(ctx context.Context, p prompter, d Deps, to replaceTarget, b foundBackup, resume *replace.State) error {
+	r, err := askReplace(ctx, p, d, to, b, resume)
 	if err != nil {
 		return err
+	}
+	defer r.install.Admin.Close()
+	return r.run(ctx, p)
+}
+
+// askReplace asks every question a Replace needs before it writes to this home.
+func askReplace(ctx context.Context, p prompter, d Deps, to replaceTarget, b foundBackup, resume *replace.State) (replaceRun, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return replaceRun{}, err
 	}
 	start := time.Now()
 	progress := p.cmd.ErrOrStderr()
 	live := liveScreen(progress)
 	block := ui.NewBlock(progress, live)
-	d.Runner = pausing{Runner: d.Runner, block: block}
-	client := &restic.Client{Bin: bin, Repo: b.Path, R: d.Runner}
-	if err := askBackupPassphrase(ctx, p, d.Runner, client, b.Name); err != nil {
-		return err
+	runner := pausing{Runner: d.Runner, block: block}
+	client := &restic.Client{Bin: to.bin, Repo: b.Path, R: runner}
+	if err := askBackupPassphrase(ctx, p, runner, client, b.Name); err != nil {
+		return replaceRun{}, err
 	}
-	st, err := pinSnapshot(ctx, client, b, resume, home)
+	st, err := pinSnapshot(ctx, client, b, to.dest, resume, home)
 	if err != nil {
-		return err
+		return replaceRun{}, err
 	}
 	block.Done("Found the backup, passphrase checked", time.Since(start))
 	start = time.Now()
 	if err := waitForFullDiskAccess(p, home); err != nil {
-		return err
+		return replaceRun{}, err
 	}
 	recipe, err := dumpRecipe(ctx, p, client, st.SnapshotID, st.OldHome, home)
 	if err != nil {
-		return err
+		return replaceRun{}, err
 	}
 	list, err := inventoryOf(ctx, recipe, d.CaskURL, home)
 	if err != nil {
-		return err
+		return replaceRun{}, err
 	}
 	plan, err := apps.PlanFrom(recipe, list)
 	if err != nil {
-		return fmt.Errorf("reading the app recipe: %w", err)
+		return replaceRun{}, fmt.Errorf("reading the app recipe: %w", err)
 	}
 	// A resumed run passed it already, and what it restored since would count twice.
 	if !st.Restoring {
 		if err := checkFreeSpace(ctx, client, st.SnapshotID, home, appsSize(list)); err != nil {
-			return err
+			return replaceRun{}, err
 		}
 	}
-	power := askForPower(ctx, p, d.Runner)
-	skipped := openAppStore(ctx, p, d.Runner, &plan)
-	install := apps.Deps{Runner: d.Runner, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
+	power := askForPower(ctx, p, runner)
+	skipped := openAppStore(ctx, p, runner, &plan)
+	install := apps.Deps{Runner: runner, BrewDirs: apps.BrewDirs, AppsRoot: "/Applications"}
 	if plan.NeedsAdmin(apps.BrewDirs) {
-		install.Admin = startAdmin(ctx, p, d.Runner)
-		defer install.Admin.Close()
+		install.Admin = startAdmin(ctx, p, runner)
 	}
-	if err := waitForAppsToQuit(ctx, p, d.Runner); err != nil {
-		return err
+	// The run takes the session over; until then, any way out of here closes it, a panic too.
+	handedOver := false
+	defer func() {
+		if !handedOver {
+			install.Admin.Close()
+		}
+	}()
+	if err := waitForAppsToQuit(ctx, p, runner); err != nil {
+		return replaceRun{}, err
 	}
 	block.Done(ready(len(plan.StoreIDs) > 0, install.Admin != nil), time.Since(start))
-	stopAwake := keepAwake(ctx, d.Runner)
+	handedOver = true
+	return replaceRun{
+		to: to, backup: b, home: home, runner: runner, client: client, block: block, live: live, power: power,
+		state: st, recipe: recipe, list: list, plan: plan, install: install, skipped: skipped,
+	}, nil
+}
+
+// run restores the home and installs the apps, then has this Mac take the backup over.
+func (r replaceRun) run(ctx context.Context, p prompter) error {
+	stopAwake := keepAwake(ctx, r.runner)
 	defer stopAwake()
 
 	// restic writes a retagged snapshot under a new id, which the state pins instead. A snapshot
 	// from before kinds has no tag: home keeps it a home snapshot once it carries replaced.
-	if st.SnapshotID, err = client.Tag(ctx, st.SnapshotID, []string{"home", "replaced"}, nil); err != nil {
+	st := r.state
+	var err error
+	if st.SnapshotID, err = r.client.Tag(ctx, st.SnapshotID, []string{"home", "replaced"}, nil); err != nil {
 		return fmt.Errorf("keeping the replaced snapshot for a year: %w", err)
 	}
 	st.Restoring = true
 	if err := st.Save(); err != nil {
 		return err
 	}
-	cfg, err := takeOverConfig(ctx, p, client, st.SnapshotID, st.OldHome, home)
+	cfg, err := takeOverConfig(ctx, p, r.client, st.SnapshotID, st.OldHome, r.home)
 	if err != nil {
 		return err
 	}
 	oldMachine := cfg.Machine
-	cfg.Destination, cfg.Repo, cfg.Machine = dest, b.Path, mac
-	appsSnap, err := pinnedApps(ctx, client, st.AppsSnapshotID)
+	cfg.Destination, cfg.Repo, cfg.Machine = r.to.dest, r.backup.Path, r.to.machine
+	appsSnap, err := pinnedApps(ctx, r.client, st.AppsSnapshotID)
 	if err != nil {
 		return err
 	}
 
-	p.cmd.Printf("→ Restoring %s into %s while its apps install, this takes a while…\n", b.Name, home)
+	p.cmd.Printf("→ Restoring %s into %s while its apps install, this takes a while…\n", r.backup.Name, r.home)
 	status := &replace.Status{}
-	downloads := apps.BrewDownloads(home)
+	downloads := apps.BrewDownloads(r.home)
 	downloaded := func() int64 { return apps.DownloadedBytes(downloads) }
-	stopScreen := newScreen(block, status.Read, downloaded, live, power, time.Now).follow(ctx)
+	stopScreen := newScreen(r.block, status.Progress, downloaded, r.live, r.power, time.Now).follow(ctx)
 	res, err := replace.Run(ctx, replace.RunDeps{
-		Client: client, Runner: d.Runner, Snapshot: st.SnapshotID, Apps: appsSnap,
+		Client: r.client, Runner: r.runner, Snapshot: st.SnapshotID, Apps: appsSnap,
 		Rule: replace.RuleInput{
-			OldHome: st.OldHome, Present: st.Present, Apps: list,
-			PhotosICloud: readFlag(recipe, "photos-icloud"), DesktopDocumentsICloud: readFlag(recipe, "desktop-documents-icloud"),
+			OldHome: st.OldHome, Present: st.Present, Apps: r.list,
+			PhotosICloud: manifest.ReadFlag(r.recipe, manifest.PhotosFlag), DesktopDocumentsICloud: manifest.ReadFlag(r.recipe, manifest.DesktopDocumentsFlag),
 		},
-		NewHome: home, OldMachine: oldMachine, Plan: plan, Install: install, Status: status,
+		NewHome: r.home, OldMachine: oldMachine, Plan: r.plan, Install: r.install, Status: status,
 	})
 	stopScreen()
 	if err != nil {
@@ -131,13 +181,13 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 	}
 	// The actions menu waits on the user: no password or wake lock may outlive the run. An action
 	// that needs an administrator asks for the password itself.
-	install.Admin.Close()
+	r.install.Admin.Close()
 	stopAwake()
 	// The run never reached mas, which may not be on this Mac yet.
-	if len(skipped) > 0 {
-		res.Apps.Commands = append(res.Apps.Commands, "brew install mas && mas install "+strings.Join(skipped, " "))
+	if len(r.skipped) > 0 {
+		res.Apps.Commands = append(res.Apps.Commands, "brew install mas && mas install "+strings.Join(r.skipped, " "))
 	}
-	actions := replace.Actions(res, oldMac(ctx, d.Runner, recipe, list))
+	actions := replace.Actions(res, oldMac(ctx, r.runner, r.recipe, r.list))
 	report, err := replace.ReportPath()
 	if err == nil {
 		err = replace.WriteReport(report, res, actions)
@@ -149,15 +199,15 @@ func runReplace(ctx context.Context, p prompter, d Deps, bin, dest, mac string, 
 		replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, false)
 		return errors.New("the replace is not finished: run floe init again to resume")
 	}
-	if err := takeOver(ctx, d.Runner, cfg); err != nil {
+	if err := takeOver(ctx, r.runner, cfg); err != nil {
 		// What the run left must show even when this Mac could not take the backup over, as a
 		// to-do since floe stops here.
 		replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, false)
 		return err
 	}
-	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n\n", b.Name, formatHour(cfg.Hour))
+	p.cmd.Printf("✓ This Mac now continues %s's backup, daily at %s.\n\n", r.backup.Name, formatHour(cfg.Hour))
 	replace.WriteSummary(p.cmd.OutOrStdout(), res, actions, true)
-	offerActions(ctx, p, d.Runner, actions)
+	offerActions(ctx, p, r.runner, actions)
 	return nil
 }
 
@@ -286,12 +336,12 @@ func appsToQuit(list, terminal string) []string {
 // dumpRecipe copies the old Mac's app recipe out of the snapshot into ~/.local/state/floe/recipe,
 // which outlives the restart that the commands printed for later depend on.
 func dumpRecipe(ctx context.Context, p prompter, client *restic.Client, id, oldHome, home string) (string, error) {
-	dir := filepath.Join(home, ".local/state/floe/recipe")
+	dir := filepath.Join(home, config.StateDir, "recipe")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	for _, name := range recipeFiles {
-		data, err := client.Dump(ctx, id, filepath.Join(oldHome, ".local/state/floe/manifest", name))
+	for _, name := range manifest.RecipeFiles {
+		data, err := client.Dump(ctx, id, filepath.Join(oldHome, config.StateDir, "manifest", name))
 		if err != nil && !errors.Is(err, restic.ErrNotInSnapshot) {
 			return "", fmt.Errorf("reading %s from the backup: %w", name, err)
 		}

@@ -37,7 +37,8 @@ type Progress struct {
 	RestoreEnded, AppsEnded bool
 }
 
-func (s *Status) Read() Progress {
+// Progress is a copy of how far the run is, safe to read while its tasks write it.
+func (s *Status) Progress() Progress {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.seen
@@ -100,24 +101,30 @@ func Run(ctx context.Context, d RunDeps) (Result, error) {
 	if d.Status == nil {
 		d.Status = &Status{}
 	}
-	var res Result
-	var out restoreTask
-	var wg sync.WaitGroup
+	var (
+		out                   restoreTask
+		installed             apps.Report
+		restoreTook, appsTook time.Duration
+		wg                    sync.WaitGroup
+	)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		out = restoreAll(ctx, d, tmp)
-		res.RestoreTook = time.Since(start)
+		restoreTook = time.Since(start)
 		d.Status.update(func(p *Progress) { p.RestoreEnded = true })
 	}()
 	go func() {
 		defer wg.Done()
-		res.Apps = apps.Install(ctx, d.Install, d.Plan, d.Status.setApps)
-		res.AppsTook = time.Since(start)
+		installed = apps.Install(ctx, d.Install, d.Plan, d.Status.setApps)
+		appsTook = time.Since(start)
 		d.Status.update(func(p *Progress) { p.AppsEnded = true })
 	}()
 	wg.Wait()
-	res.Restored, res.Partial, res.RestoreErrs, res.FromBackup = out.bytes, out.partial, out.errs, out.bundles
+	res := Result{
+		Restored: out.bytes, Partial: out.partial, RestoreErrs: out.errs, FromBackup: out.bundles,
+		Apps: installed, RestoreTook: restoreTook, AppsTook: appsTook,
+	}
 	// Install counted the apps before the restore brought back the bundles no installer has.
 	res.Apps.Missing = slices.DeleteFunc(res.Apps.Missing, func(name string) bool { return exists(filepath.Join(d.Install.AppsRoot, name)) })
 	res.Carried, res.SettingsErrs = CarrySettings(ctx, d.Runner, out.settings, d.Rule.OldHome, d.NewHome, out.uuid)
@@ -176,10 +183,13 @@ func (out *restoreTask) restoreHome(ctx context.Context, d RunDeps, tmp string) 
 	}
 	// Preferences go through defaults import, which cfprefsd sees, never as files under its feet.
 	patterns = append(patterns, "/Library/Preferences")
-	failed, _ := out.restore(ctx, d, tmp, d.Snapshot, in.OldHome, d.NewHome, patterns, d.Status.setRestore)
+	failed, err := restore(ctx, d.Client, tmp, restoreSpec{id: d.Snapshot, folder: in.OldHome, target: d.NewHome, patterns: patterns}, d.Status.setRestore)
+	if err != nil {
+		out.errs = append(out.errs, err)
+	}
 	d.Status.update(func(p *Progress) { p.HomeDone = true })
 	out.failed(d.NewHome, failed)
-	out.bytes = d.Status.Read().Restore.Done
+	out.bytes = d.Status.Progress().Restore.Done
 	out.settings = out.importPrefs(ctx, d, tmp, in)
 }
 
@@ -188,13 +198,17 @@ func (out *restoreTask) restoreHome(ctx context.Context, d RunDeps, tmp string) 
 // and that a later run would skip.
 func (out *restoreTask) restoreBundle(ctx context.Context, d RunDeps, tmp, folder, staged, target string) {
 	defer func() { _ = os.RemoveAll(staged) }() // a failed removal is retried by the next run
-	failed, ok := out.restore(ctx, d, tmp, d.Apps.ShortID, folder, staged, nil, func(restic.RestoreStatus) {})
+	failed, err := restore(ctx, d.Client, tmp, restoreSpec{id: d.Apps.ShortID, folder: folder, target: staged}, func(restic.RestoreStatus) {})
+	if err != nil {
+		out.errs = append(out.errs, err)
+		return
+	}
 	if len(failed) > 0 {
 		out.errs = append(out.errs, fmt.Errorf("%s not restored, a later run retries it: restic could not write %s", folder, strings.Join(failed, ", ")))
 		return
 	}
-	// Failed, or a pkg installer or the user put the app there meanwhile: their copy wins.
-	if !ok || exists(target) {
+	// A pkg installer or the user put the app there meanwhile: their copy wins.
+	if exists(target) {
 		return
 	}
 	if err := os.Rename(staged, target); err != nil {
@@ -211,26 +225,31 @@ func (out *restoreTask) failed(dir string, files []string) {
 	}
 }
 
-// restore restores folder of snapshot id into target, leaving out patterns. It returns the files
-// restic could not write, relative to target, and false when the restore failed as a whole.
-func (out *restoreTask) restore(ctx context.Context, d RunDeps, tmp, id, folder, target string, patterns []string, status func(restic.RestoreStatus)) ([]string, bool) {
+// restoreSpec is one restore: folder of snapshot id into target, leaving out patterns.
+type restoreSpec struct {
+	id, folder, target string
+	patterns           []string
+}
+
+// restore runs s with c, its excludes file written in tmp. It returns the files restic could not
+// write, relative to s.target, and an error when the restore failed as a whole.
+func restore(ctx context.Context, c *restic.Client, tmp string, s restoreSpec, status func(restic.RestoreStatus)) ([]string, error) {
 	file, err := os.CreateTemp(tmp, "excludes-*")
 	if err == nil {
-		_, err = file.WriteString(strings.Join(patterns, "\n") + "\n")
+		_, err = file.WriteString(strings.Join(s.patterns, "\n") + "\n")
 		err = errors.Join(err, file.Close())
 	}
 	if err == nil {
-		err = d.Client.RestoreFolder(ctx, id, folder, target, file.Name(), status)
+		err = c.RestoreFolder(ctx, s.id, s.folder, s.target, file.Name(), status)
 	}
 	var partial *restic.PartialRestoreError
 	if errors.As(err, &partial) {
-		return partial.Failed, true
+		return partial.Failed, nil
 	}
 	if err != nil {
-		out.errs = append(out.errs, fmt.Errorf("restoring %s: %w", folder, err))
-		return nil, false
+		return nil, fmt.Errorf("restoring %s: %w", s.folder, err)
 	}
-	return nil, true
+	return nil, nil
 }
 
 // importPrefs stages the inventoried apps' preferences and the Apple domains' in tmp, outside
@@ -262,12 +281,13 @@ func (out *restoreTask) importPrefs(ctx context.Context, d RunDeps, tmp string, 
 		patterns = append(append(patterns, "!/ByHost", "/ByHost/*"), byHost...)
 	}
 	staging := filepath.Join(tmp, "prefs")
-	failed, ok := out.restore(ctx, d, tmp, d.Snapshot, folder, staging, patterns, func(restic.RestoreStatus) {})
-	// The staging folder goes away with the run, so the files are named where they belong on this Mac.
-	out.failed(filepath.Join(d.NewHome, "Library/Preferences"), failed)
-	if !ok {
+	failed, err := restore(ctx, d.Client, tmp, restoreSpec{id: d.Snapshot, folder: folder, target: staging, patterns: patterns}, func(restic.RestoreStatus) {})
+	if err != nil {
+		out.errs = append(out.errs, err)
 		return nil
 	}
+	// The staging folder goes away with the run, so the files are named where they belong on this Mac.
+	out.failed(filepath.Join(d.NewHome, "Library/Preferences"), failed)
 	for _, id := range ids {
 		file := filepath.Join(staging, id+".plist")
 		if !exists(file) {

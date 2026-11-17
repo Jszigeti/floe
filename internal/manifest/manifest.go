@@ -13,18 +13,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jszigeti/floe/internal/config"
 	"github.com/Jszigeti/floe/internal/inventory"
 	"github.com/Jszigeti/floe/internal/run"
 )
 
 // Dir returns $HOME/.local/state/floe/manifest.
 func Dir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local/state/floe/manifest"), nil
+	return config.StatePath("manifest")
 }
+
+// The recipe's files, as Dump names them in the manifest folder.
+const (
+	BrewFile             = "Brewfile"
+	MasFile              = "mas.txt"
+	ApplicationsFile     = "applications.txt"
+	AppsFile             = "apps.json"
+	UntrustedTapsFile    = "untrusted-taps.txt"
+	KeychainAppsFile     = "keychain-apps.txt"
+	PhotosFlag           = "photos-icloud"
+	DesktopDocumentsFlag = "desktop-documents-icloud"
+)
+
+// RecipeFiles are the recipe files a Replace copies out of the old Mac's backup.
+var RecipeFiles = []string{BrewFile, MasFile, ApplicationsFile, AppsFile, PhotosFlag, DesktopDocumentsFlag, KeychainAppsFile, UntrustedTapsFile}
 
 type Options struct {
 	// AppRoots are the folders whose app bundles are inventoried; applications.txt lists the first one, as older floe reads it.
@@ -46,24 +58,24 @@ func Dump(ctx context.Context, r run.Runner, dir string, o Options) ([]inventory
 		return nil, nil, err
 	}
 	c := collection{failed: map[string]bool{}}
-	c.note("Brewfile", dumpBrewfile(ctx, r, filepath.Join(dir, "Brewfile")))
-	mas, err := dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, "mas.txt"))
-	c.note("mas.txt", err)
+	c.note(BrewFile, dumpBrewfile(ctx, r, filepath.Join(dir, BrewFile)))
+	mas, err := dumpCommand(ctx, r, "mas", []string{"list"}, filepath.Join(dir, MasFile))
+	c.note(MasFile, err)
 	// crontab -l exits 1 when the user simply has no crontab: an empty recipe, not a failure.
 	if _, err := dumpCommand(ctx, r, "crontab", []string{"-l"}, filepath.Join(dir, "crontab.txt")); err == nil || !strings.Contains(err.Error(), "no crontab for") {
 		c.note("crontab.txt", err)
 	}
 	if len(o.AppRoots) > 0 {
-		c.note("applications.txt", dumpApplications(o.AppRoots[0], filepath.Join(dir, "applications.txt")))
+		c.note(ApplicationsFile, dumpApplications(o.AppRoots[0], filepath.Join(dir, ApplicationsFile)))
 	}
-	apps, err := dumpInventory(ctx, r, filepath.Join(dir, "apps.json"), o, mas)
-	c.note("apps.json", err)
-	c.note("untrusted-taps.txt", dumpUntrustedTaps(ctx, r, filepath.Join(dir, "untrusted-taps.txt")))
-	c.note("keychain-apps.txt", dumpKeychainApps(ctx, r, home, filepath.Join(dir, "keychain-apps.txt")))
+	apps, err := dumpInventory(ctx, r, filepath.Join(dir, AppsFile), o, mas)
+	c.note(AppsFile, err)
+	c.note(UntrustedTapsFile, dumpUntrustedTaps(ctx, r, filepath.Join(dir, UntrustedTapsFile)))
+	c.note(KeychainAppsFile, dumpKeychainApps(ctx, r, home, filepath.Join(dir, KeychainAppsFile)))
 	photos, err := photosICloud(home)
-	c.note("photos-icloud", writeFlag(filepath.Join(dir, "photos-icloud"), photos, err))
+	c.note(PhotosFlag, writeFlag(filepath.Join(dir, PhotosFlag), photos, err))
 	desktop, err := DesktopDocumentsICloud(ctx, r)
-	c.note("desktop-documents-icloud", writeFlag(filepath.Join(dir, "desktop-documents-icloud"), desktop, err))
+	c.note(DesktopDocumentsFlag, writeFlag(filepath.Join(dir, DesktopDocumentsFlag), desktop, err))
 	if err := recordFailures(dir, c.failed, o.Now); err != nil {
 		c.warnings = append(c.warnings, fmt.Sprintf("status.json: %v", err))
 	}

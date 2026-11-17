@@ -26,10 +26,11 @@ func offerResume(p prompter) (replace.State, bool, error) {
 }
 
 // pinSnapshot is the snapshot a resumed Replace started from, else b's newest home snapshot and
-// apps snapshot, recorded so that an interrupted run resumes on them, with what macOS had created in home.
-func pinSnapshot(ctx context.Context, client *restic.Client, b foundBackup, resume replace.State, home string) (replace.State, error) {
-	if resume.SnapshotID != "" {
-		return resume, nil
+// apps snapshot, recorded with dest, b's destination, so that an interrupted run resumes on them,
+// with what macOS had created in home.
+func pinSnapshot(ctx context.Context, client *restic.Client, b foundBackup, dest string, resume *replace.State, home string) (replace.State, error) {
+	if resume != nil && resume.SnapshotID != "" {
+		return *resume, nil
 	}
 	snap, err := client.Latest(ctx, "home")
 	if err != nil {
@@ -43,7 +44,7 @@ func pinSnapshot(ctx context.Context, client *restic.Client, b foundBackup, resu
 		return replace.State{}, fmt.Errorf("snapshot %s covers %d folders, not one home folder: restore it with floe restore", snap.ShortID, len(snap.Paths))
 	}
 	st := replace.State{
-		Backup: b.Name, Repo: b.Path, SnapshotID: snap.ShortID, OldHome: snap.Paths[0], Started: time.Now(),
+		Backup: b.Name, Repo: b.Path, Dest: dest, SnapshotID: snap.ShortID, OldHome: snap.Paths[0], Started: time.Now(),
 		Present: replace.Present(home), AppsSnapshotID: appsSnap.ShortID,
 	}
 	return st, st.Save()

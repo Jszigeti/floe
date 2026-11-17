@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/Jszigeti/floe/internal/config"
 )
 
 // State is a Replace in progress. It pins the snapshot, so a resumed run restores the same one
@@ -17,6 +19,7 @@ import (
 type State struct {
 	Backup     string    `toml:"backup"` // name of the replaced Mac's backup
 	Repo       string    `toml:"repo"`
+	Dest       string    `toml:"dest"` // destination holding Repo, empty in a state saved before floe recorded it
 	SnapshotID string    `toml:"snapshot_id"`
 	OldHome    string    `toml:"old_home"`
 	Started    time.Time `toml:"started"`
@@ -30,17 +33,9 @@ type State struct {
 	Restoring bool `toml:"restoring"`
 }
 
-func statePath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local/state/floe/replace.toml"), nil
-}
-
 // LoadState returns the Replace an earlier run left unfinished; false when there is none.
 func LoadState() (State, bool, error) {
-	path, err := statePath()
+	path, err := config.StatePath("replace.toml")
 	if err != nil {
 		return State{}, false, err
 	}
@@ -56,7 +51,7 @@ func LoadState() (State, bool, error) {
 
 // Save records s for a later floe init to resume.
 func (s State) Save() error {
-	path, err := statePath()
+	path, err := config.StatePath("replace.toml")
 	if err != nil {
 		return err
 	}
@@ -72,7 +67,7 @@ func (s State) Save() error {
 
 // ClearState forgets the Replace in progress, once it ended or the user declined to resume it.
 func ClearState() error {
-	path, err := statePath()
+	path, err := config.StatePath("replace.toml")
 	if err != nil {
 		return err
 	}

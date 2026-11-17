@@ -284,3 +284,26 @@ func writeTestFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+// A Replace reads the flags and lists back as Dump wrote them; a backup made before one existed has none.
+func TestReadFlagAndListReadWhatDumpWrote(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeFlag(filepath.Join(dir, PhotosFlag), true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFlag(filepath.Join(dir, DesktopDocumentsFlag), false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeLines(filepath.Join(dir, KeychainAppsFile), []string{"Chrome", "Slack"}); err != nil {
+		t.Fatal(err)
+	}
+	if !ReadFlag(dir, PhotosFlag) || ReadFlag(dir, DesktopDocumentsFlag) || ReadFlag(dir, "missing") {
+		t.Errorf("flags = %v %v %v, want true false false", ReadFlag(dir, PhotosFlag), ReadFlag(dir, DesktopDocumentsFlag), ReadFlag(dir, "missing"))
+	}
+	if got, want := ReadList(dir, KeychainAppsFile), []string{"Chrome", "Slack"}; !slices.Equal(got, want) {
+		t.Errorf("ReadList = %q, want %q", got, want)
+	}
+	if got := ReadList(dir, UntrustedTapsFile); got != nil {
+		t.Errorf("missing list = %q, want none", got)
+	}
+}
