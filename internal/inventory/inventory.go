@@ -213,5 +213,6 @@ func Read(path string) ([]App, error) {
 		return nil, err
 	}
 	var apps []App
-	return apps, json.Unmarshal(data, &apps)
+	err = json.Unmarshal(data, &apps)
+	return apps, err
 }
