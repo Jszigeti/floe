@@ -731,3 +731,50 @@ func TestDoctorRecipeCompleteAndUnreadable(t *testing.T) {
 		t.Fatalf("want a warning for an unreadable status.json:\n%s", out)
 	}
 }
+
+func TestDoctorFailsWhenNoBackupRanForTwoDays(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	old := time.Now().Add(-75 * time.Hour).UTC().Format(time.RFC3339)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		if len(c.Args) > 0 && c.Args[0] == "snapshots" {
+			return `[{"time":"` + old + `","short_id":"aaa111","paths":["/Users/x"],"tags":["home"]}]`, nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("doctor must exit non-zero when no backup ran for days:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "no backup since") {
+		t.Fatalf("got:\n%s\nwant a last scheduled backup line saying no backup since", out.String())
+	}
+}
+
+func TestDoctorAcceptsABackupFromYesterday(t *testing.T) {
+	f := &run.Fake{}
+	setupHome(t, f)
+	recent := time.Now().Add(-30 * time.Hour).UTC().Format(time.RFC3339)
+	f.Handler = func(c run.Cmd) (string, error) {
+		if c.Name == "security" {
+			return "pw\n", nil
+		}
+		if len(c.Args) > 0 && c.Args[0] == "snapshots" {
+			return `[{"time":"` + recent + `","short_id":"aaa111","paths":["/Users/x"],"tags":["home"]}]`, nil
+		}
+		return "", nil
+	}
+	cmd := Root(Deps{Version: "t", Runner: f})
+	out := new(bytes.Buffer)
+	cmd.SetOut(out)
+	cmd.SetArgs([]string{"doctor"})
+	if err := cmd.Execute(); err != nil || strings.Contains(out.String(), "no backup since") {
+		t.Fatalf("got %v:\n%s\nwant a healthy doctor", err, out.String())
+	}
+}

@@ -4,6 +4,10 @@ All notable changes to floe are documented here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+
+- `floe doctor` reported the last scheduled backup as complete when the daily run had stopped happening, for instance after an upgrade macOS refused to launch. It now fails when the newest backup is older than two daily runs.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added

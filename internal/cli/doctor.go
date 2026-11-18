@@ -17,6 +17,7 @@ import (
 	"github.com/Jszigeti/floe/internal/launchd"
 	"github.com/Jszigeti/floe/internal/manifest"
 	"github.com/Jszigeti/floe/internal/restic"
+	"github.com/Jszigeti/floe/internal/run"
 	"github.com/spf13/cobra"
 )
 
@@ -118,6 +119,21 @@ type check struct {
 	run  func(ctx context.Context) (ok bool, warn bool, msg string)
 }
 
+// staleBackup is the newest home snapshot's time when two daily runs have passed without one,
+// whatever stopped them (a launch macOS refused, a crash); an unreadable backup is the
+// repository check's to report.
+func staleBackup(ctx context.Context, r run.Runner, now time.Time) (time.Time, bool) {
+	client, _, err := buildClient(ctx, r)
+	if err != nil {
+		return time.Time{}, false
+	}
+	snap, err := client.Latest(ctx, restic.TagHome)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return snap.Time, now.Sub(snap.Time) > 50*time.Hour
+}
+
 func newDoctorCmd(d Deps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
@@ -199,6 +215,10 @@ func newDoctorCmd(d Deps) *cobra.Command {
 					return interpretFDAProbe(err)
 				}},
 				{"last scheduled backup", func(ctx context.Context) (bool, bool, string) {
+					if when, stale := staleBackup(ctx, d.Runner, time.Now()); stale {
+						return false, false, fmt.Sprintf("no backup since %s — the daily run is not happening: run `floe backup` now, then `floe init` if it keeps stopping",
+							when.Local().Format("2006-01-02 3:04 PM"))
+					}
 					if when, failed := lastScheduledFailure(); failed {
 						logPath, _ := launchd.LogPath() // lastScheduledFailure already resolved it
 						return false, false, fmt.Sprintf("failed on %s — see %s", when.Format("2006-01-02 3:04 PM"), logPath)
